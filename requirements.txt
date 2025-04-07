@@ -1,3 +1,4 @@
 Flask
 flask-cors
 Pillow
+opencv-python 4.11.0.86
