@@ -5,6 +5,7 @@ import base64
 import time
 import json
 from flask import Flask, request, jsonify, send_file
+from flask_cors import CORS
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 from cryptography.hazmat.backends import default_backend
 from hashlib import sha256
@@ -16,6 +17,8 @@ UPLOAD_FOLDER = 'uploads'
 ENCRYPTED_FOLDER = 'encrypted'
 
 app = Flask(__name__)
+CORS(app)  # Enable Cross-Origin Resource Sharing
+
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 app.config['ENCRYPTED_FOLDER'] = ENCRYPTED_FOLDER
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
