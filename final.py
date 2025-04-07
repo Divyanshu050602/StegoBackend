@@ -10,6 +10,10 @@ CORS(app)
 # In-memory storage (you can replace this with DB later)
 location_store = {}
 
+@app.route('/')
+def index():
+    return "✅ Backend is running!"
+
 
 # 1️⃣ Store recipient's geolocation
 @app.route('/store-location', methods=['POST'])
