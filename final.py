@@ -84,6 +84,34 @@ def hide_message_in_image(image_path, message, output_path, lat, lon, keyword, m
 
     cv2.imwrite(output_path, img)
 
+@app.route('/store-location', methods=['POST'])
+def store_location():
+    try:
+        data = request.get_json()
+        sender_email = data.get('senderEmail')
+        latitude = data.get('latitude')
+        longitude = data.get('longitude')
+        device_id = data.get('deviceId')  # Optional: sent from frontend (FingerprintJS)
+
+        print(f"[Location Received] From: {sender_email}, Location: ({latitude}, {longitude}), Device ID: {device_id}")
+
+        # Store to a temp file or dict (you can replace this with a DB or file)
+        with open("location_temp.json", "w") as f:
+            json.dump({
+                "sender_email": sender_email,
+                "latitude": latitude,
+                "longitude": longitude,
+                "device_id": device_id,
+                "timestamp": int(time.time())
+            }, f)
+
+        return jsonify({"message": "Location stored successfully!"}), 200
+
+    except Exception as e:
+        print(f"[ERROR] Failed to store location: {str(e)}")
+        return jsonify({"error": "Failed to store location"}), 500
+
+
 @app.route("/encrypt", methods=["POST"])
 def encrypt_handler():
     try:
