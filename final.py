@@ -24,6 +24,34 @@ app.config['ENCRYPTED_FOLDER'] = ENCRYPTED_FOLDER
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 os.makedirs(ENCRYPTED_FOLDER, exist_ok=True)
 
+# Flask endpoint to handle email request
+@app.route("/send-email", methods=["POST"])
+def send_email():
+    from_email = request.json.get("from_email")
+    to_email = request.json.get("to_email")
+    subject = request.json.get("subject")
+    html_content = request.json.get("html")
+
+    headers = {
+        "Authorization": f"Bearer {re_jEu9d1Rz_AqnR2Efp5vP97aav5KBe5R5p}",
+        "Content-Type": "application/json"
+    }
+
+    data = {
+        "from": f"YourApp <no-reply@yourdomain.com>",
+        "to": [to_email],
+        "subject": subject,
+        "html": html_content
+    }
+
+    response = requests.post("https://api.resend.com/emails", headers=headers, json=data)
+
+    if response.status_code == 200:
+        return jsonify({"status": "sent"})
+    else:
+        return jsonify({"error": response.text}), 500
+
+
 @app.route('/')
 def index():
     return "✅ Backend is running!"
@@ -184,7 +212,6 @@ def decrypt_handler():
         return jsonify({"message": decrypted_message.decode()})
 
     except Exception as e:
-    print("[ENCRYPT ERROR]", str(e))  # 👈 add this line to log the actual issue
     return jsonify({"error": str(e)}), 500
 
 
