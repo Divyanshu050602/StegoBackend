@@ -184,7 +184,9 @@ def decrypt_handler():
         return jsonify({"message": decrypted_message.decode()})
 
     except Exception as e:
-        return jsonify({"error": f"[ERROR] Decryption failed: {str(e)}"}), 500
+    print("[ENCRYPT ERROR]", str(e))  # 👈 add this line to log the actual issue
+    return jsonify({"error": str(e)}), 500
+
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=10000)
