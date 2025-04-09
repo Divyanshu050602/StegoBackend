@@ -142,18 +142,19 @@ def encrypt_handler():
 
         image.save(input_path)
 
-        # ✅ Step 4: Encrypt the message into the image using all data
-       hide_message_in_image(
-            image_path=image_path, 
-            message=encrypted_data,
-            latitude=latitude,
-            longitude=longitude,
+        # ✅ Step 4: Encrypt the message into the image using all date
+        hide_message_in_image(
+            image_path=input_path, 
+            message=message,
+            output_path=output_path,
+            lat=lat,
+            lon=lon,
             keyword=keyword,
+            machine_id=machine_id
             start_timestamp=start_timestamp,
             end_timestamp=end_timestamp,
-            machine_id=machine_id
+            ttl=DEFAULT_TTL
         )
-
 
         # ✅ Step 5: Send encrypted image back to frontend as a downloadable file
         return send_file(
