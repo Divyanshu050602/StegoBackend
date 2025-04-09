@@ -168,7 +168,6 @@ def encrypt_handler():
         return jsonify({"error": str(e)}), 500
 
 
-@app.route("/decrypt", methods=["POST"])
 def decrypt_handler():
     try:
         image = request.files['image']
@@ -212,8 +211,9 @@ def decrypt_handler():
 
         return jsonify({"message": decrypted_message.decode()})
 
-     except Exception as e:
-        return jsonify({"error": str(e)}), 500  # <-- Indented correctly
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
 
 
 if __name__ == '__main__':
