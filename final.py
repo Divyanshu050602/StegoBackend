@@ -150,7 +150,7 @@ def encrypt_handler():
             lat=lat,
             lon=lon,
             keyword=keyword,
-            machine_id=machine_id
+            machine_id=machine_id,
             start_timestamp=start_timestamp,
             end_timestamp=end_timestamp,
             ttl=DEFAULT_TTL
