@@ -4,6 +4,7 @@ import numpy as np
 import base64
 import time
 import json
+from datetime import datetime
 from flask import Flask, request, jsonify, send_file
 from flask_cors import CORS
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
@@ -119,8 +120,13 @@ def encrypt_handler():
         image = request.files['image']
         message = request.form['message']
         keyword = request.form['keyword']
-        start_timestamp = request.form['startTimestamp']
-        end_timestamp = request.form['endTimestamp']
+        start_timestamp_str = request.form['startTimestamp']
+        end_timestamp_str = request.form['endTimestamp']
+
+        start_dt = datetime.strptime(start_timestamp_str, "%Y-%m-%dT%H:%M")
+        end_dt = datetime.strptime(end_timestamp_str, "%Y-%m-%dT%H:%M")
+        start_timestamp = int(start_dt.timestamp())
+        end_timestamp = int(end_dt.timestamp())
 
         # ✅ Step 2: Load stored geolocation and device data from location_temp.json
         with open("location_temp.json", "r") as f:
