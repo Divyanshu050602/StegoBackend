@@ -212,8 +212,8 @@ def decrypt_handler():
 
         return jsonify({"message": decrypted_message.decode()})
 
-    except Exception as e:
-    return jsonify({"error": str(e)}), 500
+     except Exception as e:
+        return jsonify({"error": str(e)}), 500  # <-- Indented correctly
 
 
 if __name__ == '__main__':
