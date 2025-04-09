@@ -88,21 +88,20 @@ def hide_message_in_image(image_path, message, output_path, lat, lon, keyword, m
 def store_location():
     try:
         data = request.get_json()
-        sender_email = data.get('senderEmail')
-        latitude = data.get('latitude')
-        longitude = data.get('longitude')
-        device_id = data.get('deviceId')  # Optional: sent from frontend (FingerprintJS)
+        sender_email = data['senderEmail']
+        latitude = data['latitude']
+        longitude = data['longitude']
+        device_id = data['deviceId']
 
         print(f"[Location Received] From: {sender_email}, Location: ({latitude}, {longitude}), Device ID: {device_id}")
 
-        # Store to a temp file or dict (you can replace this with a DB or file)
+        # Store only the required fields
         with open("location_temp.json", "w") as f:
             json.dump({
                 "sender_email": sender_email,
                 "latitude": latitude,
                 "longitude": longitude,
-                "device_id": device_id,
-                "timestamp": int(time.time())
+                "device_id": device_id
             }, f)
 
         return jsonify({"message": "Location stored successfully!"}), 200
@@ -115,29 +114,58 @@ def store_location():
 @app.route("/encrypt", methods=["POST"])
 def encrypt_handler():
     try:
+        # ✅ Step 1: Receive data from frontend
         image = request.files['image']
         message = request.form['message']
         keyword = request.form['keyword']
-        lat = request.form['latitude']
-        lon = request.form['longitude']
-        machine_id = request.form['machine_id']
-        timestamp = int(request.form.get('timestamp', time.time()))
+        start_timestamp = request.form['startTimestamp']
+        end_timestamp = request.form['endTimestamp']
 
+        # ✅ Step 2: Load stored geolocation and device data from location_temp.json
+        with open("location_temp.json", "r") as f:
+            location_data = json.load(f)
+
+        lat = location_data.get("latitude")
+        lon = location_data.get("longitude")
+        machine_id = location_data.get("device_id")
+
+        # ❗ Optional check
+        if not all([lat, lon, machine_id]):
+            return jsonify({"error": "Missing geolocation or device data. Please click the tracking link again."}), 400
+
+        # ✅ Step 3: Save the uploaded image temporarily
         filename = secure_filename(image.filename)
         input_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
-        output_path = os.path.join(app.config['ENCRYPTED_FOLDER'], "encrypted_" + filename)
+        encrypted_filename = "encrypted_" + os.path.splitext(filename)[0] + ".png"
+        output_path = os.path.join(app.config['ENCRYPTED_FOLDER'], encrypted_filename)
 
         image.save(input_path)
 
+        # ✅ Step 4: Encrypt the message into the image using all data
         hide_message_in_image(
-            input_path, message, output_path,
-            lat, lon, keyword, machine_id, timestamp=timestamp
+            input_path=input_path,
+            message=message,
+            output_path=output_path,
+            lat=lat,
+            lon=lon,
+            keyword=keyword,
+            machine_id=machine_id,
+            start_timestamp=start_timestamp,
+            end_timestamp=end_timestamp
         )
 
-        return send_file(output_path, as_attachment=True)
+        # ✅ Step 5: Send encrypted image back to frontend as a downloadable file
+        return send_file(
+            output_path,
+            mimetype='image/png',
+            as_attachment=True,
+            download_name=encrypted_filename
+        )
 
     except Exception as e:
+        print(f"[ERROR] /encrypt: {e}")
         return jsonify({"error": str(e)}), 500
+
 
 @app.route("/decrypt", methods=["POST"])
 def decrypt_handler():
