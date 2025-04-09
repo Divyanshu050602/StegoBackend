@@ -39,12 +39,11 @@ def encrypt_message(message, key):
     encrypted_message = encryptor.update(message.encode()) + encryptor.finalize()
     return iv, encryptor.tag, base64.b64encode(encrypted_message).decode()
 
-def hide_message_in_image(image_path, message, output_path, lat, lon, keyword, machine_id, ttl=DEFAULT_TTL, timestamp=None):
+def hide_message_in_image(image_path, message, output_path, lat, lon, keyword, machine_id, start_timestamp, end_timestamp, ttl=DEFAULT_TTL):
     key = generate_key(lat, lon, keyword, machine_id)
     iv, tag, encrypted_message = encrypt_message(message, key)
-    timestamp = timestamp if timestamp else int(time.time())
 
-    # Encrypt lat/lon also
+    # Encrypt lat/lon
     iv_loc, tag_loc, encrypted_lat = encrypt_message(str(lat), key)
     _, _, encrypted_lon = encrypt_message(str(lon), key)
 
@@ -52,7 +51,8 @@ def hide_message_in_image(image_path, message, output_path, lat, lon, keyword, m
         'iv': base64.b64encode(iv).decode(),
         'tag': base64.b64encode(tag).decode(),
         'msg': encrypted_message,
-        'timestamp': timestamp,
+        'start_timestamp': int(start_timestamp),
+        'end_timestamp': int(end_timestamp),
         'ttl': ttl,
         'lat': encrypted_lat,
         'lon': encrypted_lon,
@@ -83,6 +83,7 @@ def hide_message_in_image(image_path, message, output_path, lat, lon, keyword, m
                     data_index += 1
 
     cv2.imwrite(output_path, img)
+
 
 @app.route('/store-location', methods=['POST'])
 def store_location():
