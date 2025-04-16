@@ -11,6 +11,10 @@ from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 from cryptography.hazmat.backends import default_backend
 from hashlib import sha256
 from werkzeug.utils import secure_filename
+import tempfile
+from datetime import datetime
+from download_image import download_image
+from scrape_comments import get_comments_html
 
 # Constants
 DEFAULT_TTL = 600  # 10 minutes
@@ -175,22 +179,38 @@ def encrypt_handler():
         return jsonify({"error": str(e)}), 500
 
 
-@app.route("/decrypt", methods=["POST"])
+@app.route('/decrypt', methods=['POST'])
 def decrypt_handler():
     try:
-        image = request.files['image']
-        keyword = request.form['keyword']
-        lat = request.form['latitude']
-        lon = request.form['longitude']
-        machine_id = request.form['machine_id']
+        # 1. Extract data from form
+        image_url = request.form.get('image_url')
+        keyword = request.form.get('keyword')
+        latitude = request.form.get('latitude')
+        longitude = request.form.get('longitude')
+        machine_id = request.form.get('machine_id')
+        timestamp = request.form.get('timestamp')
 
-        key = generate_key(lat, lon, keyword, machine_id)
+        if not all([image_url, keyword, latitude, longitude, machine_id, timestamp]):
+            return jsonify({'error': 'Missing required fields'}), 400
 
-        input_path = os.path.join(app.config['UPLOAD_FOLDER'], secure_filename(image.filename))
-        image.save(input_path)
+        try:
+            readable_time = datetime.fromtimestamp(int(timestamp)).strftime('%Y-%m-%d %H:%M:%S')
+        except:
+            readable_time = 'Invalid timestamp'
 
-        # LSB decoding
-        img = cv2.imread(input_path, cv2.IMREAD_UNCHANGED)
+        # 2. Download the image using helper function
+        image_path = download_image(image_url)
+        if not os.path.exists(image_path):
+            return jsonify({'error': f'Failed to download image. Detail: {image_path}'}), 400
+
+        # 3. Scrape comments using helper function
+        comments = get_comments_html(image_url)
+
+        # 4. Generate key
+        key = generate_key(latitude, longitude, keyword, machine_id)
+
+        # 5. LSB decode
+        img = cv2.imread(image_path, cv2.IMREAD_UNCHANGED)
         binary_data = ""
         for row in img:
             for pixel in row:
@@ -212,20 +232,38 @@ def decrypt_handler():
 
         current_time = int(time.time())
 
-        # ✅ Check session validity
+        # 6. Validate session time
         if not (start_timestamp <= current_time <= end_timestamp):
             return jsonify({"error": "[ERROR] Session Expired: The current time is outside the allowed window."}), 403
 
-        # ✅ Decrypt
+        # 7. Decrypt
         cipher = Cipher(algorithms.AES(key), modes.GCM(iv, tag), backend=default_backend())
         decryptor = cipher.decryptor()
         decrypted_message = decryptor.update(encrypted_message) + decryptor.finalize()
 
-        return jsonify({"message": decrypted_message.decode()})
+        # 8. Log everything
+        decryption_logs.append({
+            'image_url': image_url,
+            'keyword': keyword,
+            'latitude': latitude,
+            'longitude': longitude,
+            'timestamp': timestamp,
+            'readable_time': readable_time,
+            'machine_id': machine_id,
+            'message': decrypted_message.decode(),
+            'comments': comments
+        })
+
+        # 9. Cleanup
+        os.remove(image_path)
+
+        return jsonify({
+            "message": decrypted_message.decode(),
+            "comments": comments
+        })
 
     except Exception as e:
-        return jsonify({"error": str(e)}), 500
-
+        return jsonify({'error': f'Decryption failed: {str(e)}'}), 500
 
 
 if __name__ == '__main__':
