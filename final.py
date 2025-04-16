@@ -175,6 +175,7 @@ def encrypt_handler():
         return jsonify({"error": str(e)}), 500
 
 
+@app.route("/decrypt", methods=["POST"])
 def decrypt_handler():
     try:
         image = request.files['image']
@@ -205,13 +206,17 @@ def decrypt_handler():
         iv = base64.b64decode(decoded_data['iv'])
         tag = base64.b64decode(decoded_data['tag'])
         encrypted_message = base64.b64decode(decoded_data['msg'])
-        timestamp = decoded_data['timestamp']
+        start_timestamp = decoded_data['start_timestamp']
+        end_timestamp = decoded_data['end_timestamp']
         ttl = decoded_data['ttl']
 
         current_time = int(time.time())
-        if current_time > timestamp + ttl:
-            return jsonify({"message": "[ERROR] Session Expired: Time limit exceeded."})
 
+        # ✅ Check session validity
+        if not (start_timestamp <= current_time <= end_timestamp):
+            return jsonify({"error": "[ERROR] Session Expired: The current time is outside the allowed window."}), 403
+
+        # ✅ Decrypt
         cipher = Cipher(algorithms.AES(key), modes.GCM(iv, tag), backend=default_backend())
         decryptor = cipher.decryptor()
         decrypted_message = decryptor.update(encrypted_message) + decryptor.finalize()
