@@ -198,18 +198,21 @@ def decrypt_handler():
         except:
             readable_time = 'Invalid timestamp'
 
-        # 2. Download the image using helper function
+        # 2. Download the image
         image_path = download_image(image_url)
         if not os.path.exists(image_path):
             return jsonify({'error': f'Failed to download image. Detail: {image_path}'}), 400
 
-        # 3. Scrape comments using helper function
+        # 3. Scrape comments
         comments = get_comments_html(image_url)
 
-        # 4. Generate key
+        # 4. NLP: Find matched keyword from comments
+        _, matched_keyword, _ = find_best_match_with_inputs([keyword], comments)
+
+        # 5. Generate key
         key = generate_key(latitude, longitude, keyword, machine_id)
 
-        # 5. LSB decode
+        # 6. Decode image using LSB
         img = cv2.imread(image_path, cv2.IMREAD_UNCHANGED)
         binary_data = ""
         for row in img:
@@ -232,7 +235,6 @@ def decrypt_handler():
 
         current_time = int(time.time())
 
-        # 6. Validate session time
         if not (start_timestamp <= current_time <= end_timestamp):
             return jsonify({"error": "[ERROR] Session Expired: The current time is outside the allowed window."}), 403
 
@@ -241,7 +243,7 @@ def decrypt_handler():
         decryptor = cipher.decryptor()
         decrypted_message = decryptor.update(encrypted_message) + decryptor.finalize()
 
-        # 8. Log everything
+        # 8. Log (internally keep track of details)
         decryption_logs.append({
             'image_url': image_url,
             'keyword': keyword,
@@ -251,15 +253,16 @@ def decrypt_handler():
             'readable_time': readable_time,
             'machine_id': machine_id,
             'message': decrypted_message.decode(),
-            'comments': comments
+            'comments': comments,
+            'matched_keyword': matched_keyword
         })
 
         # 9. Cleanup
         os.remove(image_path)
 
+        # 10. Return only decrypted message
         return jsonify({
-            "message": decrypted_message.decode(),
-            "comments": comments
+            "message": decrypted_message.decode()
         })
 
     except Exception as e:
