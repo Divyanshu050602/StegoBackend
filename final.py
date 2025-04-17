@@ -23,7 +23,7 @@ UPLOAD_FOLDER = 'uploads'
 ENCRYPTED_FOLDER = 'encrypted'
 
 app = Flask(__name__)
-CORS(app, origins=["https://tracking-location-page.vercel.app"])  # Enable Cross-Origin Resource Sharing
+CORS(app)  # Enable Cross-Origin Resource Sharing
 
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 app.config['ENCRYPTED_FOLDER'] = ENCRYPTED_FOLDER
