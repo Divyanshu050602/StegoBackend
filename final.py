@@ -15,6 +15,7 @@ import tempfile
 from datetime import datetime
 from download_image import download_image
 from scrape_comments import get_comments_html
+from NLP_keyword_and_comment_analyser import find_best_match
 
 # Constants
 DEFAULT_TTL = 600  # 10 minutes
@@ -207,7 +208,7 @@ def decrypt_handler():
         comments = get_comments_html(image_url)
 
         # 4. NLP: Find matched keyword from comments
-        _, matched_keyword, _ = find_best_match_with_inputs([keyword], comments)
+        matched_keyword = find_best_match(keywords, comments)
 
         # 5. Generate key
         key = generate_key(latitude, longitude, keyword, machine_id)
