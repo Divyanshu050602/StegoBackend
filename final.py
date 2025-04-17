@@ -208,7 +208,7 @@ def decrypt_handler():
         comments = get_comments_html(image_url)
 
         # 4. NLP: Find matched keyword from comments
-        matched_keyword = find_best_match(keywords, comments)
+        matched_keyword = find_best_match(keyword, comments)
 
         # 5. Generate key
         key = generate_key(latitude, longitude, keyword, machine_id)
