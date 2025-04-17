@@ -15,7 +15,7 @@ import tempfile
 from datetime import datetime
 from download_image import download_image
 from scrape_comments import get_comments_html
-from NLP_keyword_and_comment_analyser import find_best_match
+from NLP_comment_and_keyword_analyser import find_best_match
 
 # Constants
 DEFAULT_TTL = 600  # 10 minutes
