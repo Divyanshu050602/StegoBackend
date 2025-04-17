@@ -7,6 +7,9 @@ cryptography==42.0.5
 werkzeug==3.0.1
 requests
 beautifulsoup4
+sentence-transformers
+gunicorn
+torch
 
 
 
