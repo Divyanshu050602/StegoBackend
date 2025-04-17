@@ -201,11 +201,13 @@ def decrypt_handler():
 
         # 2. Download the image
         image_path = download_image(image_url)
-        if not os.path.exists(image_path):
+        if not image_path or not os.path.exists(image_path):
             return jsonify({'error': f'Failed to download image. Detail: {image_path}'}), 400
 
         # 3. Scrape comments
         comments = get_comments_html(image_url)
+        if not comments:
+            return jsonify({'error': 'No comments found to match keyword'}), 400
 
         # 4. NLP: Find matched keyword from comments
         matched_keyword = find_best_match(keyword, comments)
@@ -215,6 +217,9 @@ def decrypt_handler():
 
         # 6. Decode image using LSB
         img = cv2.imread(image_path, cv2.IMREAD_UNCHANGED)
+        if img is None:
+            return jsonify({'error': 'Failed to load image'}), 400
+        
         binary_data = ""
         for row in img:
             for pixel in row:
@@ -225,7 +230,10 @@ def decrypt_handler():
         extracted_message = ''.join(chr(int(b, 2)) for b in bytes_data if int(b, 2) != 0)
         extracted_message = extracted_message.split("###")[0]
 
-        decoded_data = json.loads(base64.b64decode(extracted_message).decode())
+        try:
+            decoded_data = json.loads(base64.b64decode(extracted_message).decode())
+        except (json.JSONDecodeError, TypeError) as e:
+            return jsonify({'error': f'Error decoding message: {str(e)}'}), 400
 
         iv = base64.b64decode(decoded_data['iv'])
         tag = base64.b64decode(decoded_data['tag'])
@@ -235,11 +243,13 @@ def decrypt_handler():
         ttl = decoded_data['ttl']
 
         current_time = int(time.time())
-
         if not (start_timestamp <= current_time <= end_timestamp):
             return jsonify({"error": "[ERROR] Session Expired: The current time is outside the allowed window."}), 403
 
         # 7. Decrypt
+        if any(x is None for x in [key, iv, tag, encrypted_message]):
+            return jsonify({'error': 'Invalid decryption data'}), 400
+
         cipher = Cipher(algorithms.AES(key), modes.GCM(iv, tag), backend=default_backend())
         decryptor = cipher.decryptor()
         decrypted_message = decryptor.update(encrypted_message) + decryptor.finalize()
