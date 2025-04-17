@@ -267,6 +267,8 @@ def decrypt_handler():
         })
 
     except Exception as e:
+        import traceback
+        traceback.print_exc()
         return jsonify({'error': f'Decryption failed: {str(e)}'}), 500
 
 
