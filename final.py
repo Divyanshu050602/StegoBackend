@@ -16,6 +16,7 @@ from werkzeug.utils import secure_filename
 from download_image import download_image
 from scrape_comments import get_comments_html
 from NLP_comment_and_keyword_analyser import find_best_match
+import functools
 
 # ----------------- Setup Logging -------------------
 logging.basicConfig(level=logging.INFO, format='[%(asctime)s] %(levelname)s in %(module)s: %(message)s')
@@ -25,10 +26,10 @@ class TimeoutException(Exception): pass
 
 def timeout(seconds=10):
     def decorator(func):
-        def _handle_timeout(signum, frame):
-            raise TimeoutException("Function timed out after {} seconds".format(seconds))
-
+        @functools.wraps(func)  # This line is key
         def wrapper(*args, **kwargs):
+            def _handle_timeout(signum, frame):
+                raise TimeoutException(f"Function timed out after {seconds} seconds")
             signal.signal(signal.SIGALRM, _handle_timeout)
             signal.alarm(seconds)
             try:
