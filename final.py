@@ -4,6 +4,8 @@ import numpy as np
 import base64
 import time
 import json
+import signal
+import logging
 from datetime import datetime
 from flask import Flask, request, jsonify, send_file
 from flask_cors import CORS
@@ -11,20 +13,39 @@ from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 from cryptography.hazmat.backends import default_backend
 from hashlib import sha256
 from werkzeug.utils import secure_filename
-import tempfile
-from datetime import datetime
 from download_image import download_image
 from scrape_comments import get_comments_html
 from NLP_comment_and_keyword_analyser import find_best_match
 
-# Constants
-DEFAULT_TTL = 600  # 10 minutes
+# ----------------- Setup Logging -------------------
+logging.basicConfig(level=logging.INFO, format='[%(asctime)s] %(levelname)s in %(module)s: %(message)s')
+
+# ----------------- Timeout Decorator -------------------
+class TimeoutException(Exception): pass
+
+def timeout(seconds=10):
+    def decorator(func):
+        def _handle_timeout(signum, frame):
+            raise TimeoutException("Function timed out after {} seconds".format(seconds))
+
+        def wrapper(*args, **kwargs):
+            signal.signal(signal.SIGALRM, _handle_timeout)
+            signal.alarm(seconds)
+            try:
+                return func(*args, **kwargs)
+            finally:
+                signal.alarm(0)
+        return wrapper
+    return decorator
+
+# ----------------- App Setup -------------------
+DEFAULT_TTL = 600
 UPLOAD_FOLDER = 'uploads'
 ENCRYPTED_FOLDER = 'encrypted'
+decryption_logs = []
 
 app = Flask(__name__)
-CORS(app)  # Enable Cross-Origin Resource Sharing
-
+CORS(app)
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 app.config['ENCRYPTED_FOLDER'] = ENCRYPTED_FOLDER
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
@@ -34,6 +55,7 @@ os.makedirs(ENCRYPTED_FOLDER, exist_ok=True)
 def index():
     return "✅ Backend is running!"
 
+# ----------------- Helper Functions -------------------
 def generate_key(lat, lon, keyword, machine_id):
     key_data = f"{lat}_{lon}_{keyword}_{machine_id}"
     return sha256(key_data.encode()).digest()
@@ -48,8 +70,6 @@ def encrypt_message(message, key):
 def hide_message_in_image(image_path, message, output_path, lat, lon, keyword, machine_id, start_timestamp, end_timestamp, ttl=DEFAULT_TTL):
     key = generate_key(lat, lon, keyword, machine_id)
     iv, tag, encrypted_message = encrypt_message(message, key)
-
-    # Encrypt lat/lon
     iv_loc, tag_loc, encrypted_lat = encrypt_message(str(lat), key)
     _, _, encrypted_lon = encrypt_message(str(lon), key)
 
@@ -67,14 +87,12 @@ def hide_message_in_image(image_path, message, output_path, lat, lon, keyword, m
     }
 
     data = base64.b64encode(json.dumps(data_dict).encode()).decode() + '###'
-
     img = cv2.imread(image_path, cv2.IMREAD_UNCHANGED)
     if img is None:
         raise ValueError("Invalid image path or unsupported format")
 
     height, width, _ = img.shape
     max_bytes = (height * width * 3) // 8
-
     if len(data) > max_bytes:
         raise ValueError("Message too large to hide in image")
 
@@ -90,6 +108,7 @@ def hide_message_in_image(image_path, message, output_path, lat, lon, keyword, m
 
     cv2.imwrite(output_path, img)
 
+# ----------------- Routes -------------------
 
 @app.route('/store-location', methods=['POST'])
 def store_location():
@@ -100,9 +119,7 @@ def store_location():
         longitude = data['longitude']
         device_id = data['deviceId']
 
-        print(f"[Location Received] From: {sender_email}, Location: ({latitude}, {longitude}), Device ID: {device_id}")
-
-        # Store only the required fields
+        logging.info(f"Location stored for {sender_email} at ({latitude}, {longitude})")
         with open("location_temp.json", "w") as f:
             json.dump({
                 "sender_email": sender_email,
@@ -110,18 +127,18 @@ def store_location():
                 "longitude": longitude,
                 "device_id": device_id
             }, f)
-
         return jsonify({"message": "Location stored successfully!"}), 200
 
     except Exception as e:
-        print(f"[ERROR] Failed to store location: {str(e)}")
+        logging.exception("Failed to store location")
         return jsonify({"error": "Failed to store location"}), 500
 
 
 @app.route("/encrypt", methods=["POST"])
+@timeout(30)
 def encrypt_handler():
     try:
-        # ✅ Step 1: Receive data from frontend
+        logging.info("Encryption request received.")
         image = request.files['image']
         message = request.form['message']
         keyword = request.form['keyword']
@@ -133,7 +150,6 @@ def encrypt_handler():
         start_timestamp = int(start_dt.timestamp())
         end_timestamp = int(end_dt.timestamp())
 
-        # ✅ Step 2: Load stored geolocation and device data from location_temp.json
         with open("location_temp.json", "r") as f:
             location_data = json.load(f)
 
@@ -141,21 +157,17 @@ def encrypt_handler():
         lon = location_data.get("longitude")
         machine_id = location_data.get("device_id")
 
-        # ❗ Optional check
         if not all([lat, lon, machine_id]):
             return jsonify({"error": "Missing geolocation or device data. Please click the tracking link again."}), 400
 
-        # ✅ Step 3: Save the uploaded image temporarily
         filename = secure_filename(image.filename)
         input_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
         encrypted_filename = "encrypted_" + os.path.splitext(filename)[0] + ".png"
         output_path = os.path.join(app.config['ENCRYPTED_FOLDER'], encrypted_filename)
-
         image.save(input_path)
 
-        # ✅ Step 4: Encrypt the message into the image using all date
         hide_message_in_image(
-            image_path=input_path, 
+            image_path=input_path,
             message=message,
             output_path=output_path,
             lat=lat,
@@ -163,27 +175,25 @@ def encrypt_handler():
             keyword=keyword,
             machine_id=machine_id,
             start_timestamp=start_timestamp,
-            end_timestamp=end_timestamp,
-            ttl=DEFAULT_TTL
+            end_timestamp=end_timestamp
         )
 
-        # ✅ Step 5: Send encrypted image back to frontend as a downloadable file
-        return send_file(
-            output_path,
-            mimetype='image/png',
-            as_attachment=True,
-            download_name=encrypted_filename
-        )
+        logging.info("Encryption complete, returning file to frontend.")
+        return send_file(output_path, mimetype='image/png', as_attachment=True, download_name=encrypted_filename)
 
+    except TimeoutException:
+        logging.error("Encryption timed out")
+        return jsonify({"error": "Encryption process timed out"}), 504
     except Exception as e:
-        print(f"[ERROR] /encrypt: {e}")
+        logging.exception("Encryption failed")
         return jsonify({"error": str(e)}), 500
 
 
 @app.route('/decrypt', methods=['POST'])
+@timeout(60)
 def decrypt_handler():
     try:
-        # 1. Extract data from form
+        logging.info("Decryption request received.")
         image_url = request.form.get('image_url')
         keyword = request.form.get('keyword')
         latitude = request.form.get('latitude')
@@ -199,29 +209,22 @@ def decrypt_handler():
         except:
             readable_time = 'Invalid timestamp'
 
-        # 2. Download the image
         download_result = download_image(image_url)
         if not download_result["success"]:
             return jsonify({'error': f'Failed to download image. Detail: {download_result["error"]}'}), 400
         image_path = download_result["image_path"]
 
-
-        # 3. Scrape comments
         comments = get_comments_html(image_url)
         if not comments:
             return jsonify({'error': 'No comments found to match keyword'}), 400
 
-        # 4. NLP: Find matched keyword from comments
         matched_keyword = find_best_match(keyword, comments)
-
-        # 5. Generate key
         key = generate_key(latitude, longitude, keyword, machine_id)
 
-        # 6. Decode image using LSB
         img = cv2.imread(image_path, cv2.IMREAD_UNCHANGED)
         if img is None:
             return jsonify({'error': 'Failed to load image'}), 400
-        
+
         binary_data = ""
         for row in img:
             for pixel in row:
@@ -234,7 +237,7 @@ def decrypt_handler():
 
         try:
             decoded_data = json.loads(base64.b64decode(extracted_message).decode())
-        except (json.JSONDecodeError, TypeError) as e:
+        except Exception as e:
             return jsonify({'error': f'Error decoding message: {str(e)}'}), 400
 
         iv = base64.b64decode(decoded_data['iv'])
@@ -242,21 +245,15 @@ def decrypt_handler():
         encrypted_message = base64.b64decode(decoded_data['msg'])
         start_timestamp = decoded_data['start_timestamp']
         end_timestamp = decoded_data['end_timestamp']
-        ttl = decoded_data['ttl']
 
         current_time = int(time.time())
         if not (start_timestamp <= current_time <= end_timestamp):
             return jsonify({"error": "[ERROR] Session Expired: The current time is outside the allowed window."}), 403
 
-        # 7. Decrypt
-        if any(x is None for x in [key, iv, tag, encrypted_message]):
-            return jsonify({'error': 'Invalid decryption data'}), 400
-
         cipher = Cipher(algorithms.AES(key), modes.GCM(iv, tag), backend=default_backend())
         decryptor = cipher.decryptor()
         decrypted_message = decryptor.update(encrypted_message) + decryptor.finalize()
 
-        # 8. Log (internally keep track of details)
         decryption_logs.append({
             'image_url': image_url,
             'keyword': keyword,
@@ -270,17 +267,15 @@ def decrypt_handler():
             'matched_keyword': matched_keyword
         })
 
-        # 9. Cleanup
         os.remove(image_path)
+        logging.info("Decryption successful.")
+        return jsonify({"message": decrypted_message.decode()})
 
-        # 10. Return only decrypted message
-        return jsonify({
-            "message": decrypted_message.decode()
-        })
-
+    except TimeoutException:
+        logging.error("Decryption timed out")
+        return jsonify({'error': 'Decryption timed out'}), 504
     except Exception as e:
-        import traceback
-        traceback.print_exc()
+        logging.exception("Decryption failed")
         return jsonify({'error': f'Decryption failed: {str(e)}'}), 500
 
 
