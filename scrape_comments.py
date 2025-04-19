@@ -1,7 +1,6 @@
 import requests
 from bs4 import BeautifulSoup
 import re
-import json
 
 def get_deviation_id(url):
     patterns = [
@@ -27,26 +26,30 @@ def get_comments_html(url):
         soup = BeautifulSoup(response.text, 'html.parser')
 
         comments = []
-        sections = soup.find_all('div', {'data-hook': 'comment_extractor'})
-        for comment in sections:
-            username = comment.find('a', {'data-hook': 'username'})
-            username = username.text.strip() if username else "Anonymous"
-            text_div = comment.find('div', {'data-hook': 'comment_extractor-body'})
-            if text_div:
-                comment_text = ' '.join(text_div.stripped_strings)
-                comments.append((username, comment_text))
-
-        if not comments:
-            legacy = soup.find_all('div', class_='_2ZtHP')
-            for c in legacy:
-                username = c.find('a', class_='_277bf')
+        # Modern structure
+        for comment in soup.find_all('div', {'data-hook': 'comment_extractor'}):
+            try:
+                username = comment.find('a', {'data-hook': 'username'})
                 username = username.text.strip() if username else "Anonymous"
-                text_div = c.find('div', class_='_1LEaS')
-                if text_div:
-                    comment_text = ' '.join(text_div.stripped_strings)
-                    comments.append((username, comment_text))
+                text_div = comment.find('div', {'data-hook': 'comment_extractor-body'})
+                comment_text = ' '.join(text_div.stripped_strings) if text_div else ''
+                comments.append({"username": username, "comment": comment_text})
+            except Exception:
+                continue
 
-        return comments
+        # Fallback to legacy structure
+        if not comments:
+            for c in soup.find_all('div', class_='_2ZtHP'):
+                try:
+                    username = c.find('a', class_='_277bf')
+                    username = username.text.strip() if username else "Anonymous"
+                    text_div = c.find('div', class_='_1LEaS')
+                    comment_text = ' '.join(text_div.stripped_strings) if text_div else ''
+                    comments.append({"username": username, "comment": comment_text})
+                except Exception:
+                    continue
+
+        return comments or [{"error": "No comments found"}]
 
     except Exception as e:
-        return [("Error", str(e))]
+        return [{"error": str(e)}]
