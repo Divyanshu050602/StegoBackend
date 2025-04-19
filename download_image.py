@@ -2,15 +2,7 @@ import requests
 import os
 import shutil
 from bs4 import BeautifulSoup
-import logging
-from timeout_decorator import timeout, TimeoutError
 
-# Set up logging
-logging.basicConfig(level=logging.ERROR, filename='error_log.log', 
-                    format='%(asctime)s - %(levelname)s - %(message)s')
-
-# Define the timeout decorator (5 seconds timeout for the download)
-@timeout(5)
 def download_image(page_url):
     try:
         headers = {"User-Agent": "Mozilla/5.0"}
@@ -21,9 +13,7 @@ def download_image(page_url):
         soup = BeautifulSoup(page_response.text, 'html.parser')
         meta_tag = soup.find('meta', property='og:image')
         if not meta_tag or not meta_tag.get('content'):
-            error_msg = "Could not find image (og:image not found)."
-            logging.error(error_msg)
-            return {"success": False, "error": error_msg}
+            return {"success": False, "error": "Could not find image (og:image not found)."}
 
         image_url = meta_tag['content']
 
@@ -42,21 +32,12 @@ def download_image(page_url):
         response.raise_for_status()
 
         if not response.headers.get('content-type', '').startswith('image'):
-            error_msg = "URL does not point to an image."
-            logging.error(error_msg)
-            return {"success": False, "error": error_msg}
+            return {"success": False, "error": "URL does not point to an image."}
 
         with open(image_path, 'wb') as out_file:
             shutil.copyfileobj(response.raw, out_file)
 
         return {"success": True, "image_path": image_path}
 
-    except TimeoutError:
-        error_msg = "The request timed out."
-        logging.error(error_msg)
-        return {"success": False, "error": error_msg}
-
     except Exception as e:
-        error_msg = f"An error occurred: {str(e)}"
-        logging.error(error_msg)
-        return {"success": False, "error": error_msg}
+        return {"success": False, "error": str(e)}
