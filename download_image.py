@@ -13,8 +13,8 @@ def download_image(image_url):
         if not filename.endswith(('.jpg', '.jpeg', '.png', '.gif', '.webp')):
             filename += '.png'
 
-        # Define the download folder path (Downloads/DeviantArt_Downloads)
-        downloads_folder = os.path.join(os.path.expanduser('~'), 'Downloads', 'DeviantArt_Downloads')
+        # Define the download folder path (applicable for deployment on server)
+        downloads_folder = os.path.join(os.getcwd(), 'deviantart_downloads')
 
         # Create the folder if it doesn't exist
         os.makedirs(downloads_folder, exist_ok=True)
@@ -26,11 +26,15 @@ def download_image(image_url):
         response = requests.get(image_url, stream=True)
         response.raise_for_status()  # Check if the request was successful
 
+        # Check if the content is an image
+        if not response.headers.get('content-type', '').startswith('image'):
+            return {"success": False, "error": "URL does not point to an image."}
+
         # Save the image to the local disk
         with open(image_path, 'wb') as out_file:
             shutil.copyfileobj(response.raw, out_file)
 
-        return image_path
+        return {"success": True, "image_path": image_path}
 
     except Exception as e:
-        return f"Error downloading image: {e}"
+        return {"success": False, "error": f"Error downloading image: {e}"}
