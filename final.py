@@ -200,9 +200,11 @@ def decrypt_handler():
             readable_time = 'Invalid timestamp'
 
         # 2. Download the image
-        image_path = download_image(image_url)
-        if not image_path or not os.path.exists(image_path):
-            return jsonify({'error': f'Failed to download image. Detail: {image_path}'}), 400
+        download_result = download_image(image_url)
+        if not download_result["success"]:
+            return jsonify({'error': f'Failed to download image. Detail: {download_result["error"]}'}), 400
+        image_path = download_result["image_path"]
+
 
         # 3. Scrape comments
         comments = get_comments_html(image_url)
