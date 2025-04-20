@@ -13,7 +13,7 @@ from cryptography.hazmat.backends import default_backend
 from hashlib import sha256
 from werkzeug.utils import secure_filename
 from download_image import download_image
-from scrape_comments import get_comments_html
+from scrape_comments import fetch_comments
 from NLP_comment_and_keyword_analyser import find_best_match
 
 # Constants
