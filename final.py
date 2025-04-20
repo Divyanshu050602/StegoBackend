@@ -207,7 +207,7 @@ def decrypt_handler():
 
 
         # 3. Scrape comments
-        comments = get_comments_html(image_url)
+        comments = fetch_comments(image_url)
         if not comments:
             return jsonify({'error': 'No comments found to match keyword'}), 400
 
