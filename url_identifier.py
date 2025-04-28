@@ -1,11 +1,22 @@
+# url_identifier.py
+
 import re
 
-def identify_url_type(url):
+def identify_url_type(url: str) -> str:
+    """
+    Identify whether a URL is a Reddit post, YouTube video (normal or shorts), or Instagram post.
+
+    Args:
+        url (str): The input URL.
+
+    Returns:
+        str: Platform type ("Reddit Post", "YouTube Video", "Instagram Post", or "Unknown")
+    """
     url = url.strip().lower()
 
     patterns = {
         "Reddit Post": r"(https?://)?(www\.)?reddit\.com/r/[\w\d_]+/comments/[\w\d]+",
-        "YouTube Video": r"(https?://)?(www\.)?(youtube\.com/watch\?v=|youtu\.be/)[\w\-]+",
+        "YouTube Video": r"(https?://)?(www\.)?(youtube\.com/watch\?v=|youtu\.be/|youtube\.com/shorts/)[\w\-]+",
         "Instagram Post": r"(https?://)?(www\.)?instagram\.com/(p|reel|tv)/[\w\-]+",
     }
 
@@ -14,15 +25,3 @@ def identify_url_type(url):
             return platform
 
     return "Unknown"
-
-def main():
-    print("🔗 Social Media URL Type Identifier")
-    print("=" * 40)
-    input_url = input("Enter the post URL: ").strip()
-
-    result = identify_url_type(input_url)
-
-    print(f"\n🧭 Detected Type: {result}")
-
-if __name__ == "__main__":
-    main()
