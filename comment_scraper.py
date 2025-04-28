@@ -5,8 +5,8 @@ sys.path.append(os.path.dirname(__file__))
 
 from url_identifier import identify_url_type
 from reddit_scraper import fetch_reddit_comments
-from instagram_scraper import get_instagram_comments
-from youtube_scraper import fetch_comments as fetch_youtube_comments
+from instagram_scraper import fetch_instagram_comments
+from youtube_scraper import fetch_youtube_comments
 
 # Load API keys from environment
 APIFY_TOKEN = os.getenv("APIFY_TOKEN")
@@ -29,7 +29,7 @@ def fetch_comments(comment_url):
             if not APIFY_TOKEN:
                 print("⚠️ Apify API token missing.")
                 return []
-            comments = get_instagram_comments(comment_url, apify_token=APIFY_TOKEN)
+            comments = fetch_instagram_comments(comment_url, apify_token=APIFY_TOKEN)
 
         elif platform == "YouTube Video":
             if not YOUTUBE_API_KEY:
