@@ -14,7 +14,7 @@ from werkzeug.utils import secure_filename
 import tempfile
 from datetime import datetime
 from download_image import download_image
-from scrape_comments import fetch_comments
+from comment_scraper import fetch_comments
 from NLP_comment_and_keyword_analyser import find_best_match
 
 # Constants
