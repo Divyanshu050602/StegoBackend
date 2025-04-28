@@ -1,46 +1,60 @@
-import os
-import re
-import requests
-from urllib.parse import urlparse
-import logging
+from googleapiclient.discovery import build
+from urllib.parse import urlparse, parse_qs
 
-logging.basicConfig(level=logging.INFO)
+def extract_video_id(url):
+    parsed_url = urlparse(url)
 
-# Read config from Render environment variables
-CLIENT_ID = os.getenv("DA_CLIENT_ID")
-CLIENT_SECRET = os.getenv("DA_CLIENT_SECRET")
-REDIRECT_URI = os.getenv("DA_REDIRECT_URI")
-REFRESH_TOKEN = os.getenv("DA_REFRESH_TOKEN")
+    if parsed_url.hostname in ['www.youtube.com', 'youtube.com']:
+        if parsed_url.path == '/watch':
+            # Normal YouTube video
+            return parse_qs(parsed_url.query).get('v', [None])[0]
+        elif parsed_url.path.startswith('/shorts/'):
+            # YouTube Shorts
+            return parsed_url.path.split('/shorts/')[1].split('/')[0]
+    elif parsed_url.hostname == 'youtu.be':
+        return parsed_url.path[1:]
+    return None
 
-# Fetch access token using refresh_token
-def get_access_token():
-    url = "https://www.deviantart.com/oauth2/token"
-    data = {
-        "grant_type": "refresh_token",
-        "client_id": CLIENT_ID,
-        "client_secret": CLIENT_SECRET,
-        "refresh_token": REFRESH_TOKEN,
-        "redirect_uri": REDIRECT_URI,
-    }
-    response = requests.post(url, data=data)
-    response.raise_for_status()
-    return response.json().get("access_token")
 
-# Fetch comments using DeviantArt API
-def fetch_comments(deviation_url, max_comments=10):
-    try:
-        access_token = get_access_token()
-        deviation_id = deviation_url.strip("/").split("-")[-1]
-
-        headers = {"Authorization": f"Bearer {access_token}"}
-        api_url = f"https://www.deviantart.com/api/v1/oauth2/comments/deviation/{deviation_id}?limit={max_comments}"
-
-        response = requests.get(api_url, headers=headers)
-        response.raise_for_status()
-
-        comments = response.json().get("thread", [])
-        return [comment["comment"]["body"] for comment in comments if "comment" in comment]
-
-    except Exception as e:
-        logging.error(f"Error fetching comments: {e}")
+def fetch_comments(video_url, api_key, max_comments=100):
+    video_id = extract_video_id(video_url)
+    if not video_id:
+        print("❌ Invalid YouTube URL or unable to extract video ID")
         return []
+
+    youtube = build('youtube', 'v3', developerKey=api_key)
+
+    comments = []
+    next_page_token = None
+
+    while len(comments) < max_comments:
+        request = youtube.commentThreads().list(
+            part='snippet',
+            videoId=video_id,
+            maxResults=min(100, max_comments - len(comments)),
+            pageToken=next_page_token,
+            textFormat='plainText'
+        )
+        response = request.execute()
+
+        for item in response.get('items', []):
+            comment = item['snippet']['topLevelComment']['snippet']['textDisplay']
+            comments.append(comment)
+
+        next_page_token = response.get('nextPageToken')
+        if not next_page_token:
+            break
+
+    return comments
+
+
+if __name__ == "__main__":
+    # Example usage
+    video_url = input("🔗 Enter YouTube video URL (normal or shorts): ").strip()
+    api_key = "AIzaSyCw2g_4ArYBIgPGTdpnap6Z17ojjS_shrI"
+
+    comments = fetch_comments(video_url, api_key)
+
+    print("\n💬 Fetched Comments:\n")
+    for i, comment in enumerate(comments, 1):
+        print(f"{i}. {comment}")
