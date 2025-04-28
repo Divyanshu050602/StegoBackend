@@ -1,6 +1,5 @@
 import sys
 import os
-from dotenv import load_dotenv
 
 sys.path.append(os.path.dirname(__file__))
 
@@ -8,9 +7,6 @@ from url_identifier import identify_url_type
 from reddit_scraper import fetch_reddit_comments
 from instagram_scraper import get_instagram_comments
 from youtube_scraper import fetch_comments as fetch_youtube_comments
-
-# Load environment variables from .env
-load_dotenv()
 
 # Load API keys from environment
 APIFY_TOKEN = os.getenv("APIFY_TOKEN")
