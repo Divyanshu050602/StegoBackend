@@ -1,10 +1,6 @@
 import os
 from googleapiclient.discovery import build
 from urllib.parse import urlparse, parse_qs
-from dotenv import load_dotenv
-
-# Load environment variables
-load_dotenv()
 
 # Get YouTube API key from environment
 YOUTUBE_API_KEY = os.getenv("YOUTUBE_API_KEY")
