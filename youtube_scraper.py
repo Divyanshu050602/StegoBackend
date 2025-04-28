@@ -19,7 +19,7 @@ def extract_video_id(url):
         return parsed_url.path[1:]
     return None
 
-def fetch_youtube_comments(video_url, max_comments=100):
+def fetch_youtube_comments(video_url):
     if not YOUTUBE_API_KEY:
         raise Exception("❌ YouTube API key not found. Please set 'YOUTUBE_API_KEY' in your .env file.")
 
