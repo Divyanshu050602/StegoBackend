@@ -1,9 +1,5 @@
 import os
 from apify_client import ApifyClient
-from dotenv import load_dotenv
-
-# Load environment variables
-load_dotenv()
 
 # Get Apify token from environment
 APIFY_TOKEN = os.getenv("APIFY_API_TOKEN")
