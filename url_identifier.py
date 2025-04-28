@@ -17,11 +17,11 @@ def identify_url_type(url: str) -> str:
     patterns = {
         "Reddit Post": r"(https?://)?(www\.)?reddit\.com/r/[\w\d_]+/comments/[\w\d]+",
         "YouTube Video": r"(https?://)?(www\.)?(youtube\.com/watch\?v=|youtu\.be/|youtube\.com/shorts/)[\w\-]+",
-        "Instagram Post": r"(https?://)?(www\.)?instagram\.com/(p|reel|tv)/[\w\-]+",
+        "Instagram Post": r"(https?://)?(www\.)?instagram\.com/(p|reel|tv)/[\w\-]+/?",
     }
 
     for platform, pattern in patterns.items():
-        if re.match(pattern, url):
+        if re.search(pattern, url):      # ✅ use re.search, not re.match
             return platform
 
     return "Unknown"
