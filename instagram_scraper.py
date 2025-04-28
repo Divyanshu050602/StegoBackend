@@ -1,10 +1,20 @@
+import os
 from apify_client import ApifyClient
+from dotenv import load_dotenv
 
-def get_instagram_comments(instagram_url, apify_token):
-    # Initialize the ApifyClient with your API token
-    client = ApifyClient(apify_token)
+# Load environment variables
+load_dotenv()
 
-    # Prepare input using the correct key 'directUrls'
+# Get Apify token from environment
+APIFY_TOKEN = os.getenv("APIFY_API_TOKEN")
+
+def fetch_instagram_comments(instagram_url):
+    if not APIFY_TOKEN:
+        raise Exception("❌ Apify API token not found. Make sure 'APIFY_API_TOKEN' is set in .env.")
+
+    # Initialize Apify client
+    client = ApifyClient(APIFY_TOKEN)
+
     run_input = {
         "directUrls": [instagram_url],
         "resultsLimit": 1000,
@@ -12,40 +22,21 @@ def get_instagram_comments(instagram_url, apify_token):
         "proxy": {"useApifyProxy": True},
     }
 
-    print("\n🔄 Starting the Instagram comment scraping...")
+    # Start the actor
+    try:
+        run = client.actor("apify/instagram-comment-scraper").call(run_input=run_input)
+    except Exception as e:
+        print(f"❌ Error triggering Apify actor: {e}")
+        return []
 
-    # Call the Apify Instagram Comment Scraper actor
-    run = client.actor("apify/instagram-comment-scraper").call(run_input=run_input)
-
-    # Fetch results
     comments_list = []
-    for item in client.dataset(run["defaultDatasetId"]).iterate_items():
-        comment = item.get("text")
-        if comment:
-            comments_list.append(comment)
+    try:
+        for item in client.dataset(run["defaultDatasetId"]).iterate_items():
+            comment = item.get("text")
+            if comment:
+                comments_list.append(comment)
+    except Exception as e:
+        print(f"❌ Error fetching results: {e}")
+        return []
 
     return comments_list
-
-def main():
-    print("📸 Instagram Comment Scraper with Apify\n" + "=" * 40)
-    instagram_url = input("🔗 Enter the public Instagram post URL: ").strip()
-
-    # Replace with your actual Apify API token
-    apify_token = "apify_api_j3pf5iuSm0Xcrvi4BHGmwxi5hDlyRi14liqZ"
-
-    try:
-        comments = get_instagram_comments(instagram_url, apify_token)
-
-        print("\n💬 Scraped Comments\n" + "-" * 30)
-        for comment in comments:
-            print(comment)
-
-        print(f"\n✅ Done. {len(comments)} comments stored in memory (list of strings).")
-
-    except Exception as e:
-        print(f"\n❌ Error: {e}")
-
-if __name__ == "__main__":
-    main()
-
-# apify_api_j3pf5iuSm0Xcrvi4BHGmwxi5hDlyRi14liqZ
