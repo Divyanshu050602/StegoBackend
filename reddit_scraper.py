@@ -1,9 +1,5 @@
 import os
 import praw
-from dotenv import load_dotenv
-
-# Load environment variables
-load_dotenv()
 
 # Get Reddit API credentials from environment
 REDDIT_CLIENT_ID = os.getenv("REDDIT_CLIENT_ID")
