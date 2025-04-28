@@ -1,5 +1,13 @@
+import os
 from googleapiclient.discovery import build
 from urllib.parse import urlparse, parse_qs
+from dotenv import load_dotenv
+
+# Load environment variables
+load_dotenv()
+
+# Get YouTube API key from environment
+YOUTUBE_API_KEY = os.getenv("YOUTUBE_API_KEY")
 
 def extract_video_id(url):
     parsed_url = urlparse(url)
@@ -15,14 +23,16 @@ def extract_video_id(url):
         return parsed_url.path[1:]
     return None
 
+def fetch_youtube_comments(video_url, max_comments=100):
+    if not YOUTUBE_API_KEY:
+        raise Exception("❌ YouTube API key not found. Please set 'YOUTUBE_API_KEY' in your .env file.")
 
-def fetch_comments(video_url, api_key, max_comments=100):
     video_id = extract_video_id(video_url)
     if not video_id:
         print("❌ Invalid YouTube URL or unable to extract video ID")
         return []
 
-    youtube = build('youtube', 'v3', developerKey=api_key)
+    youtube = build('youtube', 'v3', developerKey=YOUTUBE_API_KEY)
 
     comments = []
     next_page_token = None
@@ -46,15 +56,3 @@ def fetch_comments(video_url, api_key, max_comments=100):
             break
 
     return comments
-
-
-if __name__ == "__main__":
-    # Example usage
-    video_url = input("🔗 Enter YouTube video URL (normal or shorts): ").strip()
-    api_key = "AIzaSyCw2g_4ArYBIgPGTdpnap6Z17ojjS_shrI"
-
-    comments = fetch_comments(video_url, api_key)
-
-    print("\n💬 Fetched Comments:\n")
-    for i, comment in enumerate(comments, 1):
-        print(f"{i}. {comment}")
