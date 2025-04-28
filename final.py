@@ -185,6 +185,7 @@ def decrypt_handler():
     try:
         # 1. Extract data from form
         image_url = request.form.get('image_url')
+        comment_url = request.form.get('comment_url')
         keyword = request.form.get('keyword')
         latitude = request.form.get('latitude')
         longitude = request.form.get('longitude')
@@ -207,7 +208,7 @@ def decrypt_handler():
 
 
         # 3. Scrape comments
-        comments = fetch_comments(image_url)
+        comments = fetch_comments(comment_url)
         if not comments:
             return jsonify({'error': 'No comments found to match keyword'}), 400
 
