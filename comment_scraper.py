@@ -22,15 +22,9 @@ def fetch_comments(comment_url):
             comments = fetch_reddit_comments(comment_url)
 
         elif platform == "Instagram Post":
-            if not APIFY_TOKEN:
-                print("⚠️ Apify API token missing.")
-                return []
             comments = fetch_instagram_comments(comment_url)
 
         elif platform == "YouTube Video":
-            if not YOUTUBE_API_KEY:
-                print("⚠️ YouTube API key missing.")
-                return []
             comments = fetch_youtube_comments(comment_url)
 
         else:
