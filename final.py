@@ -229,9 +229,21 @@ def decrypt_handler():
                 for channel in range(len(pixel)):
                     binary_data += str(pixel[channel] & 1)
 
-        bytes_data = [binary_data[i:i + 8] for i in range(0, len(binary_data), 8)]
-        extracted_message = ''.join(chr(int(b, 2)) for b in bytes_data if int(b, 2) != 0)
-        extracted_message = extracted_message.split("###")[0]
+        byte_array = bytearray()
+        for i in range(0, len(binary_data), 8):
+            byte = binary_data[i:i+8]
+            if byte == '00000000':
+                continue  # optional, skips padding/null bytes
+            try:
+                byte_array.append(int(byte, 2))
+            except:
+                break
+
+        try:
+            extracted_data = byte_array.decode('utf-8', errors='ignore')
+            extracted_data = extracted_data.split("###")[0]
+        except Exception as e:
+            return jsonify({'error': f'Failed to decode byte data: {str(e)}'}), 400
 
         try:
             decoded_data = json.loads(base64.b64decode(extracted_message).decode())
