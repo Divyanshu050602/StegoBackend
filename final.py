@@ -180,13 +180,6 @@ def encrypt_handler():
         return jsonify({"error": str(e)}), 500
 
 
-def is_valid_ascii(s):
-    try:
-        s.encode('ascii')
-        return True
-    except Exception:
-        return False
-
 @app.route('/decrypt', methods=['POST'])
 def decrypt_handler():
     try:
