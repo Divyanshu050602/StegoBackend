@@ -218,7 +218,7 @@ def decrypt_handler():
         # 5. Generate key
         key = generate_key(latitude, longitude, keyword, machine_id)
 
-        # 6. Decode image using LSB
+                # 6. Decode image using LSB
         img = cv2.imread(image_path, cv2.IMREAD_UNCHANGED)
         if img is None:
             return jsonify({'error': 'Failed to load image'}), 400
@@ -233,7 +233,7 @@ def decrypt_handler():
         for i in range(0, len(binary_data), 8):
             byte = binary_data[i:i+8]
             if byte == '00000000':
-                continue  # optional, skips padding/null bytes
+                continue  # optional: skip padding/null bytes
             try:
                 byte_array.append(int(byte, 2))
             except:
@@ -246,8 +246,10 @@ def decrypt_handler():
             return jsonify({'error': f'Failed to decode byte data: {str(e)}'}), 400
 
         try:
-            decoded_data = json.loads(base64.b64decode(extracted_message).decode())
-        except (json.JSONDecodeError, TypeError) as e:
+            # Make sure only ASCII data is passed to base64 decoder
+            ascii_data = extracted_data.encode("ascii", errors="ignore").decode()
+            decoded_data = json.loads(base64.b64decode(ascii_data).decode())
+        except (json.JSONDecodeError, ValueError, TypeError) as e:
             return jsonify({'error': f'Error decoding message: {str(e)}'}), 400
 
         iv = base64.b64decode(decoded_data['iv'])
