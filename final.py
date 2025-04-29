@@ -190,6 +190,7 @@ def is_valid_ascii(s):
         return False
 
 @app.route('/decrypt', methods=['POST'])
+@app.route('/decrypt', methods=['POST'])
 def decrypt_handler():
     try:
         # 1. Extract data from form
@@ -214,7 +215,9 @@ def decrypt_handler():
 
         # ASCII validation
         for key, value in form_data.items():
-            if not is_valid_ascii(value):
+            try:
+                value.encode('ascii')
+            except UnicodeEncodeError:
                 return jsonify({'error': f'Invalid input: {key} must contain only ASCII characters'}), 400
 
         latitude = float(latitude)
@@ -237,36 +240,28 @@ def decrypt_handler():
         # 5. Generate AES key
         key = generate_key(latitude, longitude, keyword, machine_id)
 
-        # 6. Decode image using LSB
+        # 6. Decode message from image using raw bytes
         img = cv2.imread(image_path, cv2.IMREAD_UNCHANGED)
         if img is None:
             return jsonify({'error': 'Failed to load image'}), 400
-        
+
         binary_data = ""
         for row in img:
             for pixel in row:
                 for channel in range(len(pixel)):
                     binary_data += str(pixel[channel] & 1)
 
-        bytes_data = [binary_data[i:i + 8] for i in range(0, len(binary_data), 8)]
-        raw_message = ''.join(chr(int(b, 2)) for b in bytes_data if 0 <= int(b, 2) <= 127)
-
-        print("\n[DEBUG] Raw Extracted Message (truncated):")
-        print(raw_message[:300])
-
-        extracted_message = raw_message.split("###")[0]
-
-        # Sanitize for base64
-        sanitized = re.sub(r'[^A-Za-z0-9+/=]', '', extracted_message)
-
-        print("\n[DEBUG] Sanitized Base64 Payload (truncated):")
-        print(sanitized[:300])
+        byte_array = bytearray()
+        for i in range(0, len(binary_data), 8):
+            byte_chunk = binary_data[i:i+8]
+            if len(byte_chunk) < 8:
+                break
+            byte_array.append(int(byte_chunk, 2))
 
         try:
-            decoded_json = base64.b64decode(sanitized).decode('ascii')
-            print("\n[DEBUG] Decoded JSON string (truncated):")
-            print(decoded_json[:300])
-            decoded_data = json.loads(decoded_json)
+            full_message = byte_array.decode('utf-8', errors='ignore')
+            payload_str = full_message.split("###")[0]
+            decoded_data = json.loads(base64.b64decode(payload_str))
         except Exception as e:
             return jsonify({'error': f'Error decoding message: {str(e)}'}), 400
 
@@ -278,21 +273,22 @@ def decrypt_handler():
         end_timestamp = decoded_data['end_timestamp']
         ttl = decoded_data['ttl']
 
-        # 8. Check timestamp
+        # 8. Timestamp validation
         current_time = int(time.time())
         if not (start_timestamp <= current_time <= end_timestamp):
             return jsonify({"error": "[ERROR] Session Expired: The current time is outside the allowed window."}), 403
 
-        # 9. Verify location
+        # 9. Decrypt and verify location
         encrypted_lat = decrypt_message(decoded_data['lat'], key, decoded_data['iv_loc'], decoded_data['tag_loc'])
         encrypted_lon = decrypt_message(decoded_data['lon'], key, decoded_data['iv_loc'], decoded_data['tag_loc'])
+
         if encrypted_lat is None or encrypted_lon is None:
             return jsonify({"error": "Failed to decrypt location"}), 400
 
         if round(float(encrypted_lat), 3) != round(latitude, 3) or round(float(encrypted_lon), 3) != round(longitude, 3):
             return jsonify({'error': 'Location mismatch. Decryption denied.'}), 403
 
-        # 10. Decrypt the message
+        # 10. Decrypt message
         cipher = Cipher(algorithms.AES(key), modes.GCM(iv, tag), backend=default_backend())
         decryptor = cipher.decryptor()
         decrypted_message = decryptor.update(encrypted_message) + decryptor.finalize()
