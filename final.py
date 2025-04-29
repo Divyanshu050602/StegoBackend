@@ -183,7 +183,7 @@ def encrypt_handler():
 @app.route('/decrypt', methods=['POST'])
 def decrypt_handler():
     try:
-        # 1. Extract data from form
+        # 1. Extract form data
         image_url = request.form.get('image_url')
         comment_url = request.form.get('comment_url')
         keyword = request.form.get('keyword')
@@ -206,7 +206,6 @@ def decrypt_handler():
             return jsonify({'error': f'Failed to download image. Detail: {download_result["error"]}'}), 400
         image_path = download_result["image_path"]
 
-
         # 3. Scrape comments
         comments = fetch_comments(comment_url)
         if not comments:
@@ -218,11 +217,11 @@ def decrypt_handler():
         # 5. Generate key
         key = generate_key(latitude, longitude, keyword, machine_id)
 
-                # 6. Decode image using LSB
+        # 6. Extract LSB data from image
         img = cv2.imread(image_path, cv2.IMREAD_UNCHANGED)
         if img is None:
             return jsonify({'error': 'Failed to load image'}), 400
-        
+
         binary_data = ""
         for row in img:
             for pixel in row:
@@ -233,7 +232,7 @@ def decrypt_handler():
         for i in range(0, len(binary_data), 8):
             byte = binary_data[i:i+8]
             if byte == '00000000':
-                continue  # optional: skip padding/null bytes
+                break
             try:
                 byte_array.append(int(byte, 2))
             except:
@@ -241,15 +240,16 @@ def decrypt_handler():
 
         try:
             extracted_data = byte_array.decode('utf-8', errors='ignore')
-            extracted_data = extracted_data.split("###")[0]
+            extracted_message = extracted_data.split("###")[0]
         except Exception as e:
             return jsonify({'error': f'Failed to decode byte data: {str(e)}'}), 400
 
+        # 7. Clean extracted Base64 message
+        cleaned_message = re.sub(r'[^A-Za-z0-9+/=]', '', extracted_message)
+
         try:
-            # Make sure only ASCII data is passed to base64 decoder
-            ascii_data = extracted_data.encode("ascii", errors="ignore").decode()
-            decoded_data = json.loads(base64.b64decode(ascii_data).decode())
-        except (json.JSONDecodeError, ValueError, TypeError) as e:
+            decoded_data = json.loads(base64.b64decode(cleaned_message).decode())
+        except Exception as e:
             return jsonify({'error': f'Error decoding message: {str(e)}'}), 400
 
         iv = base64.b64decode(decoded_data['iv'])
@@ -263,15 +263,12 @@ def decrypt_handler():
         if not (start_timestamp <= current_time <= end_timestamp):
             return jsonify({"error": "[ERROR] Session Expired: The current time is outside the allowed window."}), 403
 
-        # 7. Decrypt
-        if any(x is None for x in [key, iv, tag, encrypted_message]):
-            return jsonify({'error': 'Invalid decryption data'}), 400
-
+        # 8. Decrypt using AES-GCM
         cipher = Cipher(algorithms.AES(key), modes.GCM(iv, tag), backend=default_backend())
         decryptor = cipher.decryptor()
         decrypted_message = decryptor.update(encrypted_message) + decryptor.finalize()
 
-        # 8. Log (internally keep track of details)
+        # 9. Log the session internally
         decryption_logs.append({
             'image_url': image_url,
             'keyword': keyword,
@@ -280,17 +277,17 @@ def decrypt_handler():
             'timestamp': timestamp,
             'readable_time': readable_time,
             'machine_id': machine_id,
-            'message': decrypted_message.decode(),
+            'message': decrypted_message.decode('utf-8', errors='ignore'),
             'comments': comments,
             'matched_keyword': matched_keyword
         })
 
-        # 9. Cleanup
+        # 10. Cleanup
         os.remove(image_path)
 
-        # 10. Return only decrypted message
+        # 11. Return decrypted message
         return jsonify({
-            "message": decrypted_message.decode()
+            "message": decrypted_message.decode('utf-8', errors='ignore')
         })
 
     except Exception as e:
