@@ -183,122 +183,107 @@ def encrypt_handler():
 @app.route('/decrypt', methods=['POST'])
 def decrypt_handler():
     try:
-        # 1. Extract and validate input
+        # 1. Extract data from form
+        image_url = request.form.get('image_url')
+        comment_url = request.form.get('comment_url')
+        keyword = request.form.get('keyword')
+        latitude = request.form.get('latitude')
+        longitude = request.form.get('longitude')
+        machine_id = request.form.get('machine_id')
+        timestamp = request.form.get('timestamp')
+
+        if not all([image_url, keyword, latitude, longitude, machine_id, timestamp]):
+            return jsonify({'error': 'Missing required fields'}), 400
+
         try:
-            image_url = request.form.get('image_url')
-            comment_url = request.form.get('comment_url')
-            keyword = request.form.get('keyword')
-            latitude = request.form.get('latitude')
-            longitude = request.form.get('longitude')
-            machine_id = request.form.get('machine_id')
-            timestamp = request.form.get('timestamp')
-
-            if not all([image_url, keyword, latitude, longitude, machine_id, timestamp]):
-                return jsonify({'error': 'Missing required fields'}), 400
-
             readable_time = datetime.fromtimestamp(int(timestamp)).strftime('%Y-%m-%d %H:%M:%S')
-        except Exception as e:
-            return jsonify({'error': f'Invalid input or timestamp: {str(e)}'}), 400
+        except:
+            readable_time = 'Invalid timestamp'
 
-        # 2. Normalize location
-        try:
-            latitude = round(float(latitude), 3)
-            longitude = round(float(longitude), 3)
-        except Exception as e:
-            return jsonify({'error': f'Invalid location data: {str(e)}'}), 400
-
-        # 3. Download image
+        # 2. Download the image
         download_result = download_image(image_url)
         if not download_result["success"]:
             return jsonify({'error': f'Failed to download image. Detail: {download_result["error"]}'}), 400
         image_path = download_result["image_path"]
 
-        # 4. Scrape comments
-        try:
-            comments = fetch_comments(comment_url)
-            if not comments:
-                return jsonify({'error': 'No comments found to match keyword'}), 400
-        except Exception as e:
-            return jsonify({'error': f'Failed to fetch comments: {str(e)}'}), 400
 
-        # 5. NLP: Match keyword
-        try:
-            matched_keyword = find_best_match(keyword, comments)
-        except Exception as e:
-            return jsonify({'error': f'Keyword matching failed: {str(e)}'}), 400
+        # 3. Scrape comments
+        comments = fetch_comments(comment_url)
+        if not comments:
+            return jsonify({'error': 'No comments found to match keyword'}), 400
 
-        # 6. Generate key
-        try:
-            key = generate_key(latitude, longitude, keyword, machine_id)
-        except Exception as e:
-            return jsonify({'error': f'Key generation failed: {str(e)}'}), 400
+        # 4. NLP: Find matched keyword from comments
+        matched_keyword = find_best_match(keyword, comments)
 
-        # 7. Decode image via LSB
-        try:
-            img = cv2.imread(image_path, cv2.IMREAD_UNCHANGED)
-            if img is None:
-                return jsonify({'error': 'Failed to load image'}), 400
+        # 5. Generate key
+        key = generate_key(latitude, longitude, keyword, machine_id)
 
-            binary_data = ""
-            for row in img:
-                for pixel in row:
-                    for channel in range(len(pixel)):
-                        binary_data += str(pixel[channel] & 1)
+        # 6. Decode image using LSB
+        img = cv2.imread(image_path, cv2.IMREAD_UNCHANGED)
+        if img is None:
+            return jsonify({'error': 'Failed to load image'}), 400
+        
+        binary_data = ""
+        for row in img:
+            for pixel in row:
+                for channel in range(len(pixel)):
+                    binary_data += str(pixel[channel] & 1)
 
-            byte_array = bytearray()
-            for i in range(0, len(binary_data), 8):
-                byte = binary_data[i:i + 8]
-                if byte == '00000000':
-                    break
-                try:
-                    byte_array.append(int(byte, 2))
-                except:
-                    break
+        bytes_data = [binary_data[i:i + 8] for i in range(0, len(binary_data), 8)]
+        extracted_message = ''.join(chr(int(b, 2)) for b in bytes_data if int(b, 2) != 0)
+        extracted_message = extracted_message.split("###")[0]
 
-            extracted_message = byte_array.decode('utf-8', errors='ignore').split("###")[0]
-        except Exception as e:
-            return jsonify({'error': f'Image decoding failed: {str(e)}'}), 400
-
-        # 8. Decode base64 JSON
         try:
             decoded_data = json.loads(base64.b64decode(extracted_message).decode())
-            iv = base64.b64decode(decoded_data['iv'])
-            tag = base64.b64decode(decoded_data['tag'])
-            encrypted_message = base64.b64decode(decoded_data['msg'])
-            start_timestamp = decoded_data['start_timestamp']
-            end_timestamp = decoded_data['end_timestamp']
-            ttl = decoded_data.get('ttl', 0)
-        except Exception as e:
-            return jsonify({'error': f'Error decoding message block: {str(e)}'}), 400
+        except (json.JSONDecodeError, TypeError) as e:
+            return jsonify({'error': f'Error decoding message: {str(e)}'}), 400
 
-        # 9. Time window check
-        try:
-            current_time = int(time.time())
-            if not (start_timestamp <= current_time <= end_timestamp):
-                return jsonify({"error": "[ERROR] Session Expired: The current time is outside the allowed window."}), 403
-        except Exception as e:
-            return jsonify({'error': f'Time window validation failed: {str(e)}'}), 400
+        iv = base64.b64decode(decoded_data['iv'])
+        tag = base64.b64decode(decoded_data['tag'])
+        encrypted_message = base64.b64decode(decoded_data['msg'])
+        start_timestamp = decoded_data['start_timestamp']
+        end_timestamp = decoded_data['end_timestamp']
+        ttl = decoded_data['ttl']
 
-        # 10. AES-GCM decryption
-        try:
-            cipher = Cipher(algorithms.AES(key), modes.GCM(iv, tag), backend=default_backend())
-            decryptor = cipher.decryptor()
-            decrypted_message = decryptor.update(encrypted_message) + decryptor.finalize()
-        except Exception as e:
-            return jsonify({'error': f'Decryption error: {str(e)}'}), 400
+        current_time = int(time.time())
+        if not (start_timestamp <= current_time <= end_timestamp):
+            return jsonify({"error": "[ERROR] Session Expired: The current time is outside the allowed window."}), 403
 
-        # 11. Final cleanup and response
-        try:
-            os.remove(image_path)
-        except:
-            pass  # not critical
+        # 7. Decrypt
+        if any(x is None for x in [key, iv, tag, encrypted_message]):
+            return jsonify({'error': 'Invalid decryption data'}), 400
 
+        cipher = Cipher(algorithms.AES(key), modes.GCM(iv, tag), backend=default_backend())
+        decryptor = cipher.decryptor()
+        decrypted_message = decryptor.update(encrypted_message) + decryptor.finalize()
+
+        # 8. Log (internally keep track of details)
+        decryption_logs.append({
+            'image_url': image_url,
+            'keyword': keyword,
+            'latitude': latitude,
+            'longitude': longitude,
+            'timestamp': timestamp,
+            'readable_time': readable_time,
+            'machine_id': machine_id,
+            'message': decrypted_message.decode(),
+            'comments': comments,
+            'matched_keyword': matched_keyword
+        })
+
+        # 9. Cleanup
+        os.remove(image_path)
+
+        # 10. Return only decrypted message
         return jsonify({
             "message": decrypted_message.decode()
         })
 
     except Exception as e:
+        import traceback
+        traceback.print_exc()
         return jsonify({'error': f'Decryption failed: {str(e)}'}), 500
+
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=10000)
