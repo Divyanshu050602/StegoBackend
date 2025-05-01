@@ -19,7 +19,6 @@ from NLP_comment_and_keyword_analyser import find_best_match
 import re
 import logging
 
-decryption_logs = []
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -210,6 +209,7 @@ def decrypt_handler():
         timestamp = request.form.get('timestamp')
 
         if not all([image_url, keyword, latitude, longitude, machine_id, timestamp]):
+            logger.error("Missing required fields")
             return jsonify({'error': 'Missing required fields'}), 400
 
         try:
@@ -220,16 +220,19 @@ def decrypt_handler():
         # 2. Download image
         download_result = download_image(image_url)
         if not download_result["success"]:
+            logger.error(f"Image download failed: {download_result['error']}")
             return jsonify({'error': f'Failed to download image. Detail: {download_result["error"]}'}), 400
         image_path = download_result["image_path"]
 
         # 3. Scrape comments
         comments = fetch_comments(comment_url)
         if not comments:
+            logger.error("No comments found to match keyword")
             return jsonify({'error': 'No comments found to match keyword'}), 400
 
         # 4. NLP keyword matching
         matched_keyword = find_best_match(keyword, comments)
+        logger.info(f"Matched keyword: {matched_keyword}")
 
         # 5. Generate AES key
         key = generate_key(latitude, longitude, keyword, machine_id)
@@ -237,13 +240,23 @@ def decrypt_handler():
         # 6. Extract binary LSB data
         img = cv2.imread(image_path, cv2.IMREAD_UNCHANGED)
         if img is None:
+            logger.error("Failed to load image")
             return jsonify({'error': 'Failed to load image'}), 400
 
         binary_data = ""
+        end_marker_found = False
         for row in img:
             for pixel in row:
                 for channel in range(len(pixel)):
                     binary_data += str(pixel[channel] & 1)
+                    if len(binary_data) % 8 == 0:
+                        if binary_data[-8:] == '00000000':
+                            end_marker_found = True
+                            break
+                if end_marker_found:
+                    break
+            if end_marker_found:
+                break
 
         byte_array = bytearray()
         for i in range(0, len(binary_data), 8):
@@ -252,21 +265,27 @@ def decrypt_handler():
                 break
             try:
                 byte_array.append(int(byte, 2))
-            except:
+            except Exception as e:
+                logger.warning(f"Byte parse error: {str(e)}")
                 break
 
         try:
-            extracted_data = byte_array.decode('utf-8', errors='ignore')
-            extracted_data = extracted_data.split("###")[0]
+            decoded_str = byte_array.decode('utf-8', errors='ignore')
+            if "###" not in decoded_str:
+                logger.error("Terminator ### not found in decoded data")
+                return jsonify({'error': 'Invalid hidden data format'}), 400
+            extracted_data = decoded_str.split("###")[0]
         except Exception as e:
+            logger.error(f"Byte array decode error: {str(e)}")
             return jsonify({'error': f'Failed to decode byte data: {str(e)}'}), 400
 
-        # 7. Clean and decode base64
+        # 7. Clean and decode base64/JSON
         clean_base64 = re.sub(r'[^A-Za-z0-9+/=]', '', extracted_data)
         try:
             decoded_json = base64.b64decode(clean_base64).decode('utf-8')
             decoded_data = json.loads(decoded_json)
         except Exception as e:
+            logger.error(f"Base64 or JSON decode error: {str(e)}")
             return jsonify({'error': f'Base64 or JSON decoding failed: {str(e)}'}), 400
 
         # 8. Extract fields
@@ -280,39 +299,32 @@ def decrypt_handler():
         # 9. Validate timestamp
         current_time = int(time.time())
         if not (start_timestamp <= current_time <= end_timestamp):
+            logger.warning("Decryption attempt outside allowed window")
             return jsonify({"error": "[ERROR] Session Expired: The current time is outside the allowed window."}), 403
 
         # 10. AES-GCM decrypt
         if any(x is None for x in [key, iv, tag, encrypted_message]):
+            logger.error("Missing AES-GCM parameters")
             return jsonify({'error': 'Invalid decryption data'}), 400
 
         cipher = Cipher(algorithms.AES(key), modes.GCM(iv, tag), backend=default_backend())
         decryptor = cipher.decryptor()
         decrypted_message = decryptor.update(encrypted_message) + decryptor.finalize()
+        final_message = decrypted_message.decode()
 
-        # 11. Log (for internal audit)
-        decryption_logs.append({
-            'image_url': image_url,
-            'keyword': keyword,
-            'latitude': latitude,
-            'longitude': longitude,
-            'timestamp': timestamp,
-            'readable_time': readable_time,
-            'machine_id': machine_id,
-            'message': decrypted_message.decode(),
-            'comments': comments,
-            'matched_keyword': matched_keyword
-        })
+        # 11. Log success
+        logger.info(f"Decryption successful: {final_message}")
 
         # 12. Cleanup
         os.remove(image_path)
 
-        # 13. Return only the decrypted message
-        return jsonify({"message": decrypted_message.decode()})
+        # 13. Return message
+        return jsonify({"message": final_message})
 
     except Exception as e:
         import traceback
-        traceback.print_exc()
+        logger.error("Unhandled exception occurred")
+        logger.error(traceback.format_exc())
         return jsonify({'error': f'Decryption failed: {str(e)}'}), 500
 
 if __name__ == '__main__':
