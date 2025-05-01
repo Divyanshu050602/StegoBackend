@@ -23,9 +23,6 @@ def find_best_match(keywords, comments, threshold=0.4):
     if not keywords or not comments:
         return None
 
-    # Extract comment text only
-    comment_texts = [c['comment'] for c in comments if isinstance(c, dict) and 'comment' in c]
-
     keyword_embeddings = model.encode(keywords, convert_to_tensor=True)
 
     best_score = 0.0
