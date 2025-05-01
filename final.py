@@ -196,37 +196,34 @@ def is_valid_ascii(s):
         return False
 
 @app.route('/decrypt', methods=['POST'])
+from flask import request, jsonify
+import os, time, base64, json, re
+from datetime import datetime
+from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
+from cryptography.hazmat.backends import default_backend
+import cv2
+from your_imports import download_image, fetch_comments, find_best_match, generate_key  # Replace with actual imports
+
+decryption_logs = []  # You can keep a list or log this to a file/db
+
 def decrypt_handler():
     try:
-        # 1. Extract form data
+        # 1. Extract data from frontend
         image_url = request.form.get('image_url')
         comment_url = request.form.get('comment_url')
         keyword = request.form.get('keyword')
         latitude = request.form.get('latitude')
         longitude = request.form.get('longitude')
         machine_id = request.form.get('machine_id')
+        timestamp = request.form.get('timestamp')
 
-        form_data = {
-            "image_url": image_url,
-            "comment_url": comment_url,
-            "keyword": keyword,
-            "latitude": latitude,
-            "longitude": longitude,
-            "machine_id": machine_id
-        }
-
-        if not all(form_data.values()):
+        if not all([image_url, keyword, latitude, longitude, machine_id, timestamp]):
             return jsonify({'error': 'Missing required fields'}), 400
 
-        # ASCII validation
-        for key, value in form_data.items():
-            try:
-                value.encode('ascii')
-            except UnicodeEncodeError:
-                return jsonify({'error': f'Invalid input: {key} must contain only ASCII characters'}), 400
-
-        latitude = float(latitude)
-        longitude = float(longitude)
+        try:
+            readable_time = datetime.fromtimestamp(int(timestamp)).strftime('%Y-%m-%d %H:%M:%S')
+        except:
+            readable_time = 'Invalid timestamp'
 
         # 2. Download image
         download_result = download_image(image_url)
@@ -239,13 +236,13 @@ def decrypt_handler():
         if not comments:
             return jsonify({'error': 'No comments found to match keyword'}), 400
 
-        # 4. NLP keyword match
+        # 4. NLP keyword matching
         matched_keyword = find_best_match(keyword, comments)
 
-        # 5. Generate key
+        # 5. Generate AES key
         key = generate_key(latitude, longitude, keyword, machine_id)
 
-        # 6. Read image & extract binary
+        # 6. Extract binary LSB data
         img = cv2.imread(image_path, cv2.IMREAD_UNCHANGED)
         if img is None:
             return jsonify({'error': 'Failed to load image'}), 400
@@ -258,31 +255,29 @@ def decrypt_handler():
 
         byte_array = bytearray()
         for i in range(0, len(binary_data), 8):
-            byte_chunk = binary_data[i:i+8]
-            if len(byte_chunk) < 8:
+            byte = binary_data[i:i+8]
+            if byte == '00000000':
                 break
-            byte_array.append(int(byte_chunk, 2))
-
-        full_message = byte_array.decode('utf-8', errors='ignore')
-
-        # Extract payload using delimiter
-        extracted_payload = full_message.split("###")[0]
-        trimmed_payload = extracted_payload.strip()
-
-        # ✅ Fix base64 padding if missing
-        missing_padding = len(trimmed_payload) % 4
-        if missing_padding:
-            trimmed_payload += '=' * (4 - missing_padding)
+            try:
+                byte_array.append(int(byte, 2))
+            except:
+                break
 
         try:
-            logger.info(f"[DEBUG] Base64 Payload (trimmed): {trimmed_payload[:50]}...")
-            decoded_bytes = base64.b64decode(trimmed_payload, validate=True)
-            decoded_data = json.loads(decoded_bytes.decode('utf-8'))
+            extracted_data = byte_array.decode('utf-8', errors='ignore')
+            extracted_data = extracted_data.split("###")[0]
         except Exception as e:
-            logger.exception("Base64 decoding failed")
-            return jsonify({'error': f'Error decoding message: {str(e)}'}), 400
+            return jsonify({'error': f'Failed to decode byte data: {str(e)}'}), 400
 
-        # 7. Extract encrypted fields
+        # 7. Clean and decode base64
+        clean_base64 = re.sub(r'[^A-Za-z0-9+/=]', '', extracted_data)
+        try:
+            decoded_json = base64.b64decode(clean_base64).decode('utf-8')
+            decoded_data = json.loads(decoded_json)
+        except Exception as e:
+            return jsonify({'error': f'Base64 or JSON decoding failed: {str(e)}'}), 400
+
+        # 8. Extract fields
         iv = base64.b64decode(decoded_data['iv'])
         tag = base64.b64decode(decoded_data['tag'])
         encrypted_message = base64.b64decode(decoded_data['msg'])
@@ -290,33 +285,38 @@ def decrypt_handler():
         end_timestamp = decoded_data['end_timestamp']
         ttl = decoded_data['ttl']
 
-        # 8. Time check
+        # 9. Validate timestamp
         current_time = int(time.time())
         if not (start_timestamp <= current_time <= end_timestamp):
             return jsonify({"error": "[ERROR] Session Expired: The current time is outside the allowed window."}), 403
 
-        # 9. Location verification
-        decrypted_lat = decrypt_message(decoded_data['lat'], key, decoded_data['iv_loc'], decoded_data['tag_loc'])
-        decrypted_lon = decrypt_message(decoded_data['lon'], key, decoded_data['iv_loc'], decoded_data['tag_loc'])
+        # 10. AES-GCM decrypt
+        if any(x is None for x in [key, iv, tag, encrypted_message]):
+            return jsonify({'error': 'Invalid decryption data'}), 400
 
-        if decrypted_lat is None or decrypted_lon is None:
-            return jsonify({"error": "Failed to decrypt location"}), 400
-
-        if round(float(decrypted_lat), 3) != round(latitude, 3) or round(float(decrypted_lon), 3) != round(longitude, 3):
-            return jsonify({'error': 'Location mismatch. Decryption denied.'}), 403
-
-        # 10. Decrypt message
         cipher = Cipher(algorithms.AES(key), modes.GCM(iv, tag), backend=default_backend())
         decryptor = cipher.decryptor()
         decrypted_message = decryptor.update(encrypted_message) + decryptor.finalize()
 
-        # 11. Cleanup
+        # 11. Log (for internal audit)
+        decryption_logs.append({
+            'image_url': image_url,
+            'keyword': keyword,
+            'latitude': latitude,
+            'longitude': longitude,
+            'timestamp': timestamp,
+            'readable_time': readable_time,
+            'machine_id': machine_id,
+            'message': decrypted_message.decode(),
+            'comments': comments,
+            'matched_keyword': matched_keyword
+        })
+
+        # 12. Cleanup
         os.remove(image_path)
 
-        # 12. Return decrypted message
-        return jsonify({
-            "message": decrypted_message.decode()
-        })
+        # 13. Return only the decrypted message
+        return jsonify({"message": decrypted_message.decode()})
 
     except Exception as e:
         import traceback
