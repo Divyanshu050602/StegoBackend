@@ -200,9 +200,7 @@ def decrypt_handler():
         if not all([image_url, comment_url, keyword, latitude, longitude, machine_id, timestamp]):
             return jsonify({'error': 'Missing required fields'}), 400
 
-        # convert keyowrds received as a single string to a list of keyowrds stored as string
-        if keyword:
-            keywords = [k.strip() for k in keyword.split(',') if k.strip()]
+        keywords = [k.strip() for k in keyword.split(',') if k.strip()]
 
         try:
             readable_time = datetime.fromtimestamp(int(timestamp)).strftime('%Y-%m-%d %H:%M:%S')
@@ -215,23 +213,22 @@ def decrypt_handler():
             return jsonify({'error': f'Failed to download image. Detail: {download_result["error"]}'}), 400
         image_path = download_result["image_path"]
 
-
         # 3. Scrape comments
         comments = fetch_comments(comment_url)
         if not comments:
             return jsonify({'error': 'No comments found to match keyword'}), 400
 
-        # 4. NLP: Find matched keyword from comments
+        # 4. NLP: Find matched keyword
         matched_keyword = find_best_match(keywords, comments)
 
-        # 5. Generate key
+        # 5. Generate decryption key
         key = generate_key(latitude, longitude, keyword, machine_id)
 
-        # 6. Decode image using LSB
+        # 6. Decode LSB message from image
         img = cv2.imread(image_path, cv2.IMREAD_UNCHANGED)
         if img is None:
             return jsonify({'error': 'Failed to load image'}), 400
-        
+
         binary_data = ""
         for row in img:
             for pixel in row:
@@ -242,11 +239,17 @@ def decrypt_handler():
         extracted_message = ''.join(chr(int(b, 2)) for b in bytes_data if int(b, 2) != 0)
         extracted_message = extracted_message.split("###")[0]
 
+        # ✅ Check if message contains only ASCII characters
+        if not all(ord(c) < 128 for c in extracted_message):
+            return jsonify({'error': 'Extracted message contains non-ASCII characters. Possibly corrupted or incorrect key/image.'}), 400
+
+        # ✅ Attempt base64 decode and JSON parse
         try:
             decoded_data = json.loads(base64.b64decode(extracted_message).decode())
-        except (json.JSONDecodeError, TypeError) as e:
-            return jsonify({'error': f'Error decoding message: {str(e)}'}), 400
+        except Exception as e:
+            return jsonify({'error': f'Error decoding base64 message: {str(e)}'}), 400
 
+        # 7. Extract encryption fields
         iv = base64.b64decode(decoded_data['iv'])
         tag = base64.b64decode(decoded_data['tag'])
         encrypted_message = base64.b64decode(decoded_data['msg'])
@@ -258,7 +261,7 @@ def decrypt_handler():
         if not (start_timestamp <= current_time <= end_timestamp):
             return jsonify({"error": "[ERROR] Session Expired: The current time is outside the allowed window."}), 403
 
-        # 7. Decrypt
+        # 8. Decrypt AES-GCM
         if any(x is None for x in [key, iv, tag, encrypted_message]):
             return jsonify({'error': 'Invalid decryption data'}), 400
 
@@ -266,7 +269,7 @@ def decrypt_handler():
         decryptor = cipher.decryptor()
         decrypted_message = decryptor.update(encrypted_message) + decryptor.finalize()
 
-        # 8. Log (internally keep track of details)
+        # 9. Log internally
         decryption_logs.append({
             'image_url': image_url,
             'keyword': keyword,
@@ -280,10 +283,10 @@ def decrypt_handler():
             'matched_keyword': matched_keyword
         })
 
-        # 9. Cleanup
+        # 10. Cleanup
         os.remove(image_path)
 
-        # 10. Return only decrypted message
+        # 11. Return decrypted result
         return jsonify({
             "message": decrypted_message.decode()
         })
