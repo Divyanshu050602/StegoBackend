@@ -16,13 +16,6 @@ from datetime import datetime
 from download_image import download_image
 from comment_scraper import fetch_comments
 from NLP_comment_and_keyword_analyser import find_best_match
-import re
-import logging
-
-
-# Configure logging
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
 
 # Constants
 DEFAULT_TTL = 600  # 10 minutes
@@ -42,6 +35,8 @@ def index():
     return "✅ Backend is running!"
 
 def generate_key(lat, lon, keyword, machine_id):
+    lat = round(float(lat), 3)
+    lon = round(float(lon), 3)
     key_data = f"{lat}_{lon}_{keyword}_{machine_id}"
     return sha256(key_data.encode()).digest()
 
@@ -55,6 +50,9 @@ def encrypt_message(message, key):
 def hide_message_in_image(image_path, message, output_path, lat, lon, keyword, machine_id, start_timestamp, end_timestamp, ttl=DEFAULT_TTL):
     key = generate_key(lat, lon, keyword, machine_id)
     iv, tag, encrypted_message = encrypt_message(message, key)
+
+    lat = round(float(lat), 3)
+    lon = round(float(lon), 3)
 
     # Encrypt lat/lon
     iv_loc, tag_loc, encrypted_lat = encrypt_message(str(lat), key)
@@ -103,8 +101,8 @@ def store_location():
     try:
         data = request.get_json()
         sender_email = data['senderEmail']
-        latitude = data['latitude']
-        longitude = data['longitude']
+        latitude = round(float(data['latitude']), 3)
+        longitude = round(float(data['longitude']), 3)
         device_id = data['deviceId']
 
         print(f"[Location Received] From: {sender_email}, Location: ({latitude}, {longitude}), Device ID: {device_id}")
@@ -144,8 +142,8 @@ def encrypt_handler():
         with open("location_temp.json", "r") as f:
             location_data = json.load(f)
 
-        lat = location_data.get("latitude")
-        lon = location_data.get("longitude")
+        lat = round(float(location_data.get("latitude")), 3)
+        lon = round(float(location_data.get("longitude")), 3)
         machine_id = location_data.get("device_id")
 
         # ❗ Optional check
@@ -187,187 +185,114 @@ def encrypt_handler():
         return jsonify({"error": str(e)}), 500
 
 
-import re
-
-def is_valid_ascii(s):
-    try:
-        s.encode('ascii')
-        return True
-    except UnicodeEncodeError:
-        return False
-
 @app.route('/decrypt', methods=['POST'])
 def decrypt_handler():
     try:
-        # 1. Extract data from frontend
+        # 1. Extract data from form
         image_url = request.form.get('image_url')
         comment_url = request.form.get('comment_url')
         keyword = request.form.get('keyword')
-        latitude = request.form.get('latitude')
-        longitude = request.form.get('longitude')
+        latitude = round(float(request.form.get('latitude')), 3)
+        longitude = round(float(request.form.get('longitude')), 3)
         machine_id = request.form.get('machine_id')
         timestamp = request.form.get('timestamp')
 
-        logger.info(f"Decryption attempt with: URL={image_url}, keyword={keyword}, coords=({latitude},{longitude})")
-
-        if not all([image_url, keyword, latitude, longitude, machine_id, timestamp]):
-            logger.error("Missing required fields")
+        if not all([image_url, comment_url, keyword, latitude, longitude, machine_id, timestamp]):
             return jsonify({'error': 'Missing required fields'}), 400
+
+        # convert keyowrds received as a single string to a list of keyowrds stored as string
+        if keyword:
+            keywords = [k.strip() for k in keyword.split(',') if k.strip()]
 
         try:
             readable_time = datetime.fromtimestamp(int(timestamp)).strftime('%Y-%m-%d %H:%M:%S')
-            logger.info(f"Timestamp: {readable_time}")
         except:
             readable_time = 'Invalid timestamp'
-            logger.warning(f"Invalid timestamp: {timestamp}")
 
-        # 2. Download image
+        # 2. Download the image
         download_result = download_image(image_url)
         if not download_result["success"]:
-            logger.error(f"Image download failed: {download_result['error']}")
             return jsonify({'error': f'Failed to download image. Detail: {download_result["error"]}'}), 400
         image_path = download_result["image_path"]
-        logger.info(f"Image downloaded to: {image_path}")
 
-        # 3. Scrape comments if comment_url provided
-        matched_keyword = keyword  # Default to provided keyword
-        if comment_url:
-            comments = fetch_comments(comment_url)
-            if comments:
-                matched_result = find_best_match(keyword, comments)
-                if matched_result:
-                    matched_keyword = matched_result
-                    logger.info(f"Matched keyword: {matched_keyword}")
-                else:
-                    logger.warning("No keyword match found in comments, using original keyword")
-            else:
-                logger.warning("No comments found, using original keyword")
 
-        # 4. Generate AES key
-        key = generate_key(latitude, longitude, matched_keyword, machine_id)
-        logger.info("Key generated successfully")
+        # 3. Scrape comments
+        comments = fetch_comments(comment_url)
+        if not comments:
+            return jsonify({'error': 'No comments found to match keyword'}), 400
 
-        # 5. Extract binary LSB data - IMPROVED EXTRACTION ALGORITHM
+        # 4. NLP: Find matched keyword from comments
+        matched_keyword = find_best_match(keywords, comments)
+
+        # 5. Generate key
+        key = generate_key(latitude, longitude, keyword, machine_id)
+
+        # 6. Decode image using LSB
         img = cv2.imread(image_path, cv2.IMREAD_UNCHANGED)
         if img is None:
-            logger.error("Failed to load image")
             return jsonify({'error': 'Failed to load image'}), 400
-
-        # Extract all LSB from the image first
+        
         binary_data = ""
         for row in img:
             for pixel in row:
-                for channel in range(min(3, len(pixel))):  # Limit to RGB channels
+                for channel in range(len(pixel)):
                     binary_data += str(pixel[channel] & 1)
-                    # Check for terminator every 8 bits
-                    if len(binary_data) % 8 == 0 and len(binary_data) >= 24:  # Minimum length for '###'
-                        # Check if we have the terminator
-                        last_chars = ''.join(chr(int(binary_data[i:i+8], 2)) for i in range(len(binary_data)-24, len(binary_data), 8))
-                        if '###' in last_chars:
-                            logger.info("Found terminator marker in LSB data")
-                            break
-                if '###' in last_chars:
-                    break
-            if '###' in last_chars:
-                break
 
-        # Convert binary to ASCII
-        binary_chars = []
-        for i in range(0, len(binary_data), 8):
-            if i + 8 <= len(binary_data):
-                byte = binary_data[i:i+8]
-                binary_chars.append(chr(int(byte, 2)))
+        bytes_data = [binary_data[i:i + 8] for i in range(0, len(binary_data), 8)]
+        extracted_message = ''.join(chr(int(b, 2)) for b in bytes_data if int(b, 2) != 0)
+        extracted_message = extracted_message.split("###")[0]
 
-        extracted_text = ''.join(binary_chars)
-        
-        # Find the terminator and extract the base64 data
-        if '###' not in extracted_text:
-            # Try a different approach - get all binary data and search
-            logger.warning("Terminator not found in initial extraction, trying full image scan")
-            binary_data = ""
-            for row in img:
-                for pixel in row:
-                    for channel in range(min(3, len(pixel))):
-                        binary_data += str(pixel[channel] & 1)
-            
-            # Build string from all binary data
-            all_chars = []
-            for i in range(0, len(binary_data), 8):
-                if i + 8 <= len(binary_data):
-                    byte = binary_data[i:i+8]
-                    all_chars.append(chr(int(byte, 2)))
-            
-            full_text = ''.join(all_chars)
-            if '###' in full_text:
-                extracted_text = full_text
-                logger.info("Found terminator in full image scan")
-            else:
-                logger.error("Terminator ### not found even in full image scan")
-                return jsonify({'error': 'Invalid hidden data format - no terminator found'}), 400
-
-        # Extract the base64 data
-        base64_data = extracted_text.split('###')[0]
-        logger.info(f"Extracted base64 data of length: {len(base64_data)}")
-
-        # 7. Clean and decode base64/JSON
-        clean_base64 = re.sub(r'[^A-Za-z0-9+/=]', '', base64_data)
         try:
-            decoded_json = base64.b64decode(clean_base64).decode('utf-8')
-            decoded_data = json.loads(decoded_json)
-            logger.info("Successfully decoded JSON data")
-        except Exception as e:
-            logger.error(f"Base64 or JSON decode error: {str(e)}")
-            logger.error(f"First 50 chars of clean_base64: {clean_base64[:50]}...")
-            return jsonify({'error': f'Base64 or JSON decoding failed: {str(e)}'}), 400
+            decoded_data = json.loads(base64.b64decode(extracted_message).decode())
+        except (json.JSONDecodeError, TypeError) as e:
+            return jsonify({'error': f'Error decoding message: {str(e)}'}), 400
 
-        # 8. Extract fields
-        try:
-            iv = base64.b64decode(decoded_data['iv'])
-            tag = base64.b64decode(decoded_data['tag'])
-            encrypted_message = base64.b64decode(decoded_data['msg'])
-            start_timestamp = decoded_data['start_timestamp']
-            end_timestamp = decoded_data['end_timestamp']
-            ttl = decoded_data['ttl']
-            logger.info(f"Extracted timestamp window: {start_timestamp} to {end_timestamp}")
-        except KeyError as e:
-            logger.error(f"Missing key in decoded data: {str(e)}")
-            return jsonify({'error': f'Missing required field in hidden data: {str(e)}'}), 400
+        iv = base64.b64decode(decoded_data['iv'])
+        tag = base64.b64decode(decoded_data['tag'])
+        encrypted_message = base64.b64decode(decoded_data['msg'])
+        start_timestamp = decoded_data['start_timestamp']
+        end_timestamp = decoded_data['end_timestamp']
+        ttl = decoded_data['ttl']
 
-        # 9. Validate timestamp
         current_time = int(time.time())
         if not (start_timestamp <= current_time <= end_timestamp):
-            logger.warning(f"Decryption attempt outside allowed window: {current_time} not in [{start_timestamp}, {end_timestamp}]")
-            return jsonify({"error": "Session Expired: The current time is outside the allowed window."}), 403
+            return jsonify({"error": "[ERROR] Session Expired: The current time is outside the allowed window."}), 403
 
-        # 10. AES-GCM decrypt
+        # 7. Decrypt
         if any(x is None for x in [key, iv, tag, encrypted_message]):
-            logger.error("Missing AES-GCM parameters")
-            return jsonify({'error': 'Invalid decryption data - missing parameters'}), 400
+            return jsonify({'error': 'Invalid decryption data'}), 400
 
-        try:
-            cipher = Cipher(algorithms.AES(key), modes.GCM(iv, tag), backend=default_backend())
-            decryptor = cipher.decryptor()
-            decrypted_message = decryptor.update(encrypted_message) + decryptor.finalize()
-            final_message = decrypted_message.decode()
-            logger.info("Decryption successful")
-        except Exception as e:
-            logger.error(f"Decryption error: {str(e)}")
-            return jsonify({'error': f'Decryption failed: {str(e)}'}), 400
+        cipher = Cipher(algorithms.AES(key), modes.GCM(iv, tag), backend=default_backend())
+        decryptor = cipher.decryptor()
+        decrypted_message = decryptor.update(encrypted_message) + decryptor.finalize()
 
-        # 11. Cleanup
-        try:
-            os.remove(image_path)
-            logger.info(f"Cleaned up temporary file: {image_path}")
-        except Exception as e:
-            logger.warning(f"Failed to clean up temp file: {str(e)}")
+        # 8. Log (internally keep track of details)
+        decryption_logs.append({
+            'image_url': image_url,
+            'keyword': keyword,
+            'latitude': latitude,
+            'longitude': longitude,
+            'timestamp': timestamp,
+            'readable_time': readable_time,
+            'machine_id': machine_id,
+            'message': decrypted_message.decode(),
+            'comments': comments,
+            'matched_keyword': matched_keyword
+        })
 
-        # 12. Return message
-        return jsonify({"message": final_message})
+        # 9. Cleanup
+        os.remove(image_path)
+
+        # 10. Return only decrypted message
+        return jsonify({
+            "message": decrypted_message.decode()
+        })
 
     except Exception as e:
         import traceback
-        logger.error("Unhandled exception occurred")
-        logger.error(traceback.format_exc())
+        traceback.print_exc()
         return jsonify({'error': f'Decryption failed: {str(e)}'}), 500
+
+
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=10000)
