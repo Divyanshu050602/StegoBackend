@@ -18,13 +18,6 @@ from comment_scraper import fetch_comments
 from NLP_comment_and_keyword_analyser import find_best_match
 import re
 import logging
-from flask import request, jsonify
-import os, time, base64, json, re
-from datetime import datetime
-from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
-from cryptography.hazmat.backends import default_backend
-import cv2
-from your_imports import download_image, fetch_comments, find_best_match, generate_key  # Replace with actual imports
 
 decryption_logs = []
 
