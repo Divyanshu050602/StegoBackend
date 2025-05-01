@@ -8,13 +8,14 @@ warnings.filterwarnings("ignore", category=UserWarning)
 # Load model globally
 model = SentenceTransformer('sentence-transformers/all-mpnet-base-v2')
 
+# ✅ Updated version
 def find_best_match(keywords, comments, threshold=0.4):
     """
     Finds the keyword that best matches the given list of comments.
 
     Args:
-        keywords (list): List of keywords.
-        comments (list): List of dictionaries with comment text.
+        keywords (list): List of keyword strings.
+        comments (list): List of comment strings.
         threshold (float): Minimum similarity score to consider a match.
 
     Returns:
@@ -28,8 +29,8 @@ def find_best_match(keywords, comments, threshold=0.4):
     best_score = 0.0
     matched_keyword = None
 
-    for comment in comment_texts:
-        print(f"[DEBUG] Comparing comment: {comment}")  # Debug print
+    for comment in comments:
+        print(f"[DEBUG] Comparing comment: {comment}")  # Optional debug
 
         comment_embedding = model.encode(comment, convert_to_tensor=True)
         similarity_scores = util.cos_sim(comment_embedding, keyword_embeddings)
