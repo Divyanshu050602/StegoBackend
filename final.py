@@ -264,16 +264,20 @@ def decrypt_handler():
             byte_array.append(int(byte_chunk, 2))
 
         full_message = byte_array.decode('utf-8', errors='ignore')
-        
-        # Strict delimiter split and cleanup
+
+        # Extract payload using delimiter
         extracted_payload = full_message.split("###")[0]
-        base64_payload = re.sub(r'[^A-Za-z0-9+/=]', '', extracted_payload)
+        trimmed_payload = extracted_payload.strip()
+
+        # ✅ Fix base64 padding if missing
+        missing_padding = len(trimmed_payload) % 4
+        if missing_padding:
+            trimmed_payload += '=' * (4 - missing_padding)
 
         try:
-            logger.info(f"[DEBUG] Base64 Payload (trimmed): {base64_payload[:50]}...")
-
-            # Validate and decode base64 safely
-            decoded_data = json.loads(base64.b64decode(base64_payload, validate=True).decode('ascii'))
+            logger.info(f"[DEBUG] Base64 Payload (trimmed): {trimmed_payload[:50]}...")
+            decoded_bytes = base64.b64decode(trimmed_payload, validate=True)
+            decoded_data = json.loads(decoded_bytes.decode('utf-8'))
         except Exception as e:
             logger.exception("Base64 decoding failed")
             return jsonify({'error': f'Error decoding message: {str(e)}'}), 400
@@ -318,7 +322,6 @@ def decrypt_handler():
         import traceback
         traceback.print_exc()
         return jsonify({'error': f'Decryption failed: {str(e)}'}), 500
-
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=10000)
