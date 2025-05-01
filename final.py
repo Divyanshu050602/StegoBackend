@@ -18,6 +18,15 @@ from comment_scraper import fetch_comments
 from NLP_comment_and_keyword_analyser import find_best_match
 import re
 import logging
+from flask import request, jsonify
+import os, time, base64, json, re
+from datetime import datetime
+from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
+from cryptography.hazmat.backends import default_backend
+import cv2
+from your_imports import download_image, fetch_comments, find_best_match, generate_key  # Replace with actual imports
+
+decryption_logs = []
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -196,16 +205,6 @@ def is_valid_ascii(s):
         return False
 
 @app.route('/decrypt', methods=['POST'])
-from flask import request, jsonify
-import os, time, base64, json, re
-from datetime import datetime
-from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
-from cryptography.hazmat.backends import default_backend
-import cv2
-from your_imports import download_image, fetch_comments, find_best_match, generate_key  # Replace with actual imports
-
-decryption_logs = []  # You can keep a list or log this to a file/db
-
 def decrypt_handler():
     try:
         # 1. Extract data from frontend
