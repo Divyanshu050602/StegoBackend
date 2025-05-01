@@ -16,6 +16,7 @@ from datetime import datetime
 from download_image import download_image
 from comment_scraper import fetch_comments
 from NLP_comment_and_keyword_analyser import find_best_match
+import hashlib
 
 # Constants
 DEFAULT_TTL = 600  # 10 minutes
@@ -235,12 +236,27 @@ def decrypt_handler():
                 for channel in range(len(pixel)):
                     binary_data += str(pixel[channel] & 1)
 
-        bytes_data = [binary_data[i:i + 8] for i in range(0, len(binary_data), 8)]
-        extracted_message = ''.join(chr(int(b, 2)) for b in bytes_data if int(b, 2) != 0)
-        extracted_message = extracted_message.split("###")[0]
+        byte_data = bytearray()
+        for i in range(0, len(binary_data), 8):
+            byte = binary_data[i:i + 8]
+            if len(byte) < 8:
+                continue
+            byte_val = int(byte, 2)
+            if byte_val == 0:
+                continue
+            byte_data.append(byte_val)
+        
+        try:
+            extracted_message = byte_data.decode('utf-8', errors='ignore').split("###")[0]
+        except UnicodeDecodeError:
+            return jsonify({'error': 'Unable to decode hidden message. Possibly corrupted or wrong image.'}), 400
+
 
         # 🔍 Log the raw extracted message (for debugging)
-        print(f"[DEBUG] Extracted message: {repr(extracted_message)}")
+        message_digest = hashlib.sha256(extracted_message.encode('utf-8')).hexdigest()
+        print(f"[DEBUG] Extracted message digest (SHA-256): {message_digest}")
+        print(f"[DEBUG] Message length (chars): {len(extracted_message)}")
+        print(f"[DEBUG] Contains delimiter ###: {'###' in extracted_message}")
 
         # ✅ Check if message contains only ASCII characters
         if not all(ord(c) < 128 for c in extracted_message):
