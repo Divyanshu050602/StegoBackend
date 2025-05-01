@@ -239,6 +239,9 @@ def decrypt_handler():
         extracted_message = ''.join(chr(int(b, 2)) for b in bytes_data if int(b, 2) != 0)
         extracted_message = extracted_message.split("###")[0]
 
+        # 🔍 Log the raw extracted message (for debugging)
+        print(f"[DEBUG] Extracted message: {repr(extracted_message)}")
+
         # ✅ Check if message contains only ASCII characters
         if not all(ord(c) < 128 for c in extracted_message):
             return jsonify({'error': 'Extracted message contains non-ASCII characters. Possibly corrupted or incorrect key/image.'}), 400
