@@ -16,6 +16,12 @@ from datetime import datetime
 from download_image import download_image
 from comment_scraper import fetch_comments
 from NLP_comment_and_keyword_analyser import find_best_match
+import re
+import logging
+
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 # Constants
 DEFAULT_TTL = 600  # 10 minutes
@@ -190,10 +196,9 @@ def is_valid_ascii(s):
         return False
 
 @app.route('/decrypt', methods=['POST'])
-@app.route('/decrypt', methods=['POST'])
 def decrypt_handler():
     try:
-        # 1. Extract data from form
+        # 1. Extract form data
         image_url = request.form.get('image_url')
         comment_url = request.form.get('comment_url')
         keyword = request.form.get('keyword')
@@ -234,13 +239,13 @@ def decrypt_handler():
         if not comments:
             return jsonify({'error': 'No comments found to match keyword'}), 400
 
-        # 4. NLP: Find matched keyword from comments
+        # 4. NLP keyword match
         matched_keyword = find_best_match(keyword, comments)
 
-        # 5. Generate AES key
+        # 5. Generate key
         key = generate_key(latitude, longitude, keyword, machine_id)
 
-        # 6. Decode message from image using raw bytes
+        # 6. Read image & extract binary
         img = cv2.imread(image_path, cv2.IMREAD_UNCHANGED)
         if img is None:
             return jsonify({'error': 'Failed to load image'}), 400
@@ -258,11 +263,19 @@ def decrypt_handler():
                 break
             byte_array.append(int(byte_chunk, 2))
 
+        full_message = byte_array.decode('utf-8', errors='ignore')
+        
+        # Strict delimiter split and cleanup
+        extracted_payload = full_message.split("###")[0]
+        base64_payload = re.sub(r'[^A-Za-z0-9+/=]', '', extracted_payload)
+
         try:
-            full_message = byte_array.decode('utf-8', errors='ignore')
-            payload_str = full_message.split("###")[0]
-            decoded_data = json.loads(base64.b64decode(payload_str))
+            logger.info(f"[DEBUG] Base64 Payload (trimmed): {base64_payload[:50]}...")
+
+            # Validate and decode base64 safely
+            decoded_data = json.loads(base64.b64decode(base64_payload, validate=True).decode('ascii'))
         except Exception as e:
+            logger.exception("Base64 decoding failed")
             return jsonify({'error': f'Error decoding message: {str(e)}'}), 400
 
         # 7. Extract encrypted fields
@@ -273,19 +286,19 @@ def decrypt_handler():
         end_timestamp = decoded_data['end_timestamp']
         ttl = decoded_data['ttl']
 
-        # 8. Timestamp validation
+        # 8. Time check
         current_time = int(time.time())
         if not (start_timestamp <= current_time <= end_timestamp):
             return jsonify({"error": "[ERROR] Session Expired: The current time is outside the allowed window."}), 403
 
-        # 9. Decrypt and verify location
-        encrypted_lat = decrypt_message(decoded_data['lat'], key, decoded_data['iv_loc'], decoded_data['tag_loc'])
-        encrypted_lon = decrypt_message(decoded_data['lon'], key, decoded_data['iv_loc'], decoded_data['tag_loc'])
+        # 9. Location verification
+        decrypted_lat = decrypt_message(decoded_data['lat'], key, decoded_data['iv_loc'], decoded_data['tag_loc'])
+        decrypted_lon = decrypt_message(decoded_data['lon'], key, decoded_data['iv_loc'], decoded_data['tag_loc'])
 
-        if encrypted_lat is None or encrypted_lon is None:
+        if decrypted_lat is None or decrypted_lon is None:
             return jsonify({"error": "Failed to decrypt location"}), 400
 
-        if round(float(encrypted_lat), 3) != round(latitude, 3) or round(float(encrypted_lon), 3) != round(longitude, 3):
+        if round(float(decrypted_lat), 3) != round(latitude, 3) or round(float(decrypted_lon), 3) != round(longitude, 3):
             return jsonify({'error': 'Location mismatch. Decryption denied.'}), 403
 
         # 10. Decrypt message
@@ -296,7 +309,7 @@ def decrypt_handler():
         # 11. Cleanup
         os.remove(image_path)
 
-        # 12. Return
+        # 12. Return decrypted message
         return jsonify({
             "message": decrypted_message.decode()
         })
@@ -305,7 +318,6 @@ def decrypt_handler():
         import traceback
         traceback.print_exc()
         return jsonify({'error': f'Decryption failed: {str(e)}'}), 500
-
 
 
 if __name__ == '__main__':
