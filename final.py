@@ -233,12 +233,13 @@ def decrypt_handler():
         if img is None:
             return jsonify({'error': 'Failed to load image'}), 400
 
-        binary_data = ""
+        bits=[]
         for row in img:
             for pixel in row:
                 for channel in range(len(pixel)):
-                    binary_data += str(pixel[channel] & 1)
+                    bits.append(str(pixel[channel] & 1))
 
+        binary_data = ''.join(bits)
         bytes_data = [binary_data[i:i + 8] for i in range(0, len(binary_data), 8)]
         extracted_message = ''.join(chr(int(b, 2)) for b in bytes_data if int(b, 2) != 0)
         extracted_message = extracted_message.split("###")[0]
