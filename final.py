@@ -276,20 +276,15 @@ def decrypt_handler():
         decryptor = cipher.decryptor()
         decrypted_message = decryptor.update(encrypted_message) + decryptor.finalize()
 
-        # 9. Log internally
-        decryption_logs=[]
-        decryption_logs.append({
-            'image_url': image_url,
-            'keyword': keyword,
-            'latitude': latitude,
-            'longitude': longitude,
-            'timestamp': timestamp,
-            'readable_time': readable_time,
-            'machine_id': machine_id,
-            'message': decrypted_message.decode(),
-            'comments': comments,
-            'matched_keyword': matched_keyword
-        })
+        # 9. Print decryption details
+        print("[🔓 DECRYPTION SUCCESS]")
+        print(f"Image URL        : {image_url}")
+        print(f"Keyword(s)       : {keyword}")
+        print(f"Matched Keyword  : {matched_keyword}")
+        print(f"Latitude         : {latitude}")
+        print(f"Longitude        : {longitude}")
+        print(f"Machine ID       : {machine_id}")
+        print(f"Decrypted Message: {decrypted_message.decode()}")
 
         # 10. Cleanup
         os.remove(image_path)
