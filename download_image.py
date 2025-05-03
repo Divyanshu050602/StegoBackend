@@ -4,8 +4,8 @@ import shutil
 import re
 
 def extract_deviation_id(url):
-    """Extract deviation ID from DeviantArt URL using regex."""
-    match = re.search(r'-([0-9]+)$', url.rstrip('/'))
+    """Extract deviation ID from DeviantArt URL."""
+    match = re.search(r'/art/(?:.*-)?(\d+)(?:/?|$)', url)
     if match:
         return match.group(1)
     return None
@@ -15,11 +15,17 @@ def download_image(page_url):
         # Get token from environment
         access_token = os.getenv("DEVIANTART_ACCESS_TOKEN")
         if not access_token:
-            raise EnvironmentError("Missing DeviantArt access token in environment variables.")
+            return {
+                "success": False,
+                "error": "Missing DeviantArt access token in environment variables."
+            }
 
         deviation_id = extract_deviation_id(page_url)
         if not deviation_id:
-            raise ValueError("Could not extract deviation ID from URL.")
+            return {
+                "success": False,
+                "error": "Could not extract deviation ID from URL."
+            }
 
         # Call DeviantArt download API
         api_url = f"https://www.deviantart.com/api/v1/oauth2/deviation/download/{deviation_id}"
@@ -29,7 +35,10 @@ def download_image(page_url):
 
         data = response.json()
         if "src" not in data:
-            raise ValueError("Download not allowed or image not found.")
+            return {
+                "success": False,
+                "error": "Download not allowed or image not found in API response."
+            }
 
         image_url = data["src"]
         filename = os.path.basename(image_url.split('?')[0])
@@ -45,14 +54,22 @@ def download_image(page_url):
         img_response.raise_for_status()
 
         if not img_response.headers.get('content-type', '').startswith('image'):
-            raise ValueError("Downloaded content is not an image.")
+            return {
+                "success": False,
+                "error": "Downloaded content is not an image."
+            }
 
         with open(image_path, 'wb') as out_file:
             shutil.copyfileobj(img_response.raw, out_file)
 
         print("SUCCESS: Image downloaded")
-        return image_path
+        return {
+            "success": True,
+            "image_path": image_path
+        }
 
     except Exception as e:
-        print(f"[ERROR] {str(e)}")
-        return None
+        return {
+            "success": False,
+            "error": str(e)
+        }
