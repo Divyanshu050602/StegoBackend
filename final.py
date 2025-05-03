@@ -31,13 +31,16 @@ app.config['ENCRYPTED_FOLDER'] = ENCRYPTED_FOLDER
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 os.makedirs(ENCRYPTED_FOLDER, exist_ok=True)
 
+def truncate_to_3_decimal_places(value):
+    return float(str(value).split('.')[0] + '.' + str(value).split('.')[1][:3])
+
 @app.route('/')
 def index():
     return "✅ Backend is running!"
 
 def generate_key(lat, lon, keyword, machine_id):
-    lat = round(float(lat), 3)
-    lon = round(float(lon), 3)
+    lat = truncate_to_3_decimal_places(lat)
+    lon = truncate_to_3_decimal_places(lon)
     key_data = f"{lat}_{lon}_{keyword}_{machine_id}"
     return sha256(key_data.encode()).digest()
 
@@ -52,8 +55,8 @@ def hide_message_in_image(image_path, message, output_path, lat, lon, keyword, m
     key = generate_key(lat, lon, keyword, machine_id)
     iv, tag, encrypted_message = encrypt_message(message, key)
 
-    lat = round(float(lat), 3)
-    lon = round(float(lon), 3)
+    lat = truncate_to_3_decimal_places(lat)
+    lon = truncate_to_3_decimal_places(lon)
 
     # Encrypt lat/lon
     iv_loc, tag_loc, encrypted_lat = encrypt_message(str(lat), key)
@@ -102,8 +105,8 @@ def store_location():
     try:
         data = request.get_json()
         sender_email = data['senderEmail']
-        latitude = round(float(data['latitude']), 3)
-        longitude = round(float(data['longitude']), 3)
+        latitude = truncate_to_3_decimal_places(latitude)
+        longitude = truncate_to_3_decimal_places(longitude)
         device_id = data['deviceId']
 
         print(f"[Location Received] From: {sender_email}, Location: ({latitude}, {longitude}), Device ID: {device_id}")
@@ -193,8 +196,8 @@ def decrypt_handler():
         image_url = request.form.get('image_url')
         comment_url = request.form.get('comment_url')
         keyword = request.form.get('keyword')
-        latitude = round(float(request.form.get('latitude')), 3)
-        longitude = round(float(request.form.get('longitude')), 3)
+        latitude = truncate_to_3_decimal_places(latitude)
+        longitude = truncate_to_3_decimal_places(longitude)
         machine_id = request.form.get('machine_id')
         timestamp = request.form.get('timestamp')
 
@@ -258,9 +261,9 @@ def decrypt_handler():
         print(f"[DEBUG] Message length (chars): {len(extracted_message)}")
         print(f"[DEBUG] Contains delimiter ###: {'###' in extracted_message}")
 
-        # ✅ Check if message contains only ASCII characters
-        if not all(ord(c) < 128 for c in extracted_message):
-            return jsonify({'error': 'Extracted message contains non-ASCII characters. Possibly corrupted or incorrect key/image.'}), 400
+        # # ✅ Check if message contains only ASCII characters
+        # if not all(ord(c) < 128 for c in extracted_message):
+        #     return jsonify({'error': 'Extracted message contains non-ASCII characters. Possibly corrupted or incorrect key/image.'}), 400
 
         # ✅ Attempt base64 decode and JSON parse
         try:
