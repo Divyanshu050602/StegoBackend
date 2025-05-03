@@ -196,8 +196,8 @@ def decrypt_handler():
         image_url = request.form.get('image_url')
         comment_url = request.form.get('comment_url')
         keyword = request.form.get('keyword')
-        latitude = truncate_to_3_decimal_places(latitude)
-        longitude = truncate_to_3_decimal_places(longitude)
+        latitude = truncate_to_3_decimal_places(float(request.form.get('latitude')))
+        longitude = truncate_to_3_decimal_places(float(request.form.get('longitude')))
         machine_id = request.form.get('machine_id')
         timestamp = request.form.get('timestamp')
 
