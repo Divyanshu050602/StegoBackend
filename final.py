@@ -277,6 +277,7 @@ def decrypt_handler():
         decrypted_message = decryptor.update(encrypted_message) + decryptor.finalize()
 
         # 9. Log internally
+        decryption_logs=[]
         decryption_logs.append({
             'image_url': image_url,
             'keyword': keyword,
