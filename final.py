@@ -226,7 +226,7 @@ def decrypt_handler():
         matched_keyword = find_best_match(keywords, comments)
 
         # 5. Generate decryption key
-        key = generate_key(latitude, longitude, keyword, machine_id)
+        key = generate_key(latitude, longitude, matched_keyword, machine_id)
 
         # 6. Decode LSB message from image
         img = cv2.imread(image_path, cv2.IMREAD_UNCHANGED)
