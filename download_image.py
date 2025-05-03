@@ -1,43 +1,58 @@
 import requests
 import os
 import shutil
-from bs4 import BeautifulSoup
+import re
+
+def extract_deviation_id(url):
+    """Extract deviation ID from DeviantArt URL using regex."""
+    match = re.search(r'-([0-9]+)$', url.rstrip('/'))
+    if match:
+        return match.group(1)
+    return None
 
 def download_image(page_url):
     try:
-        headers = {"User-Agent": "Mozilla/5.0"}
-        page_response = requests.get(page_url, headers=headers)
-        page_response.raise_for_status()
+        # Get token from environment
+        access_token = os.getenv("DEVIANTART_ACCESS_TOKEN")
+        if not access_token:
+            raise EnvironmentError("Missing DeviantArt access token in environment variables.")
 
-        # Parse the HTML to find og:image meta tag
-        soup = BeautifulSoup(page_response.text, 'html.parser')
-        meta_tag = soup.find('meta', property='og:image')
-        if not meta_tag or not meta_tag.get('content'):
-            return {"success": False, "error": "Could not find image (og:image not found)."}
+        deviation_id = extract_deviation_id(page_url)
+        if not deviation_id:
+            raise ValueError("Could not extract deviation ID from URL.")
 
-        image_url = meta_tag['content']
+        # Call DeviantArt download API
+        api_url = f"https://www.deviantart.com/api/v1/oauth2/deviation/download/{deviation_id}"
+        headers = {"Authorization": f"Bearer {access_token}"}
+        response = requests.get(api_url, headers=headers)
+        response.raise_for_status()
 
-        # Extract a safe filename
+        data = response.json()
+        if "src" not in data:
+            raise ValueError("Download not allowed or image not found.")
+
+        image_url = data["src"]
         filename = os.path.basename(image_url.split('?')[0])
         if not filename.endswith(('.jpg', '.jpeg', '.png', '.gif', '.webp')):
             filename += '.png'
 
-        # Ensure deviantart_downloads folder exists
         downloads_folder = os.path.join(os.getcwd(), 'deviantart_downloads')
         os.makedirs(downloads_folder, exist_ok=True)
         image_path = os.path.join(downloads_folder, filename)
 
-        # Download the image
-        response = requests.get(image_url, stream=True, headers=headers)
-        response.raise_for_status()
+        # Download image content
+        img_response = requests.get(image_url, stream=True, headers={"User-Agent": "Mozilla/5.0"})
+        img_response.raise_for_status()
 
-        if not response.headers.get('content-type', '').startswith('image'):
-            return {"success": False, "error": "URL does not point to an image."}
+        if not img_response.headers.get('content-type', '').startswith('image'):
+            raise ValueError("Downloaded content is not an image.")
 
         with open(image_path, 'wb') as out_file:
-            shutil.copyfileobj(response.raw, out_file)
+            shutil.copyfileobj(img_response.raw, out_file)
 
-        return {"success": True, "image_path": image_path}
+        print("SUCCESS: Image downloaded")
+        return image_path
 
     except Exception as e:
-        return {"success": False, "error": str(e)}
+        print(f"[ERROR] {str(e)}")
+        return None
