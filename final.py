@@ -105,13 +105,13 @@ def store_location():
     try:
         data = request.get_json()
         sender_email = data['senderEmail']
-        latitude = truncate_to_3_decimal_places(latitude)
-        longitude = truncate_to_3_decimal_places(longitude)
+        latitude = truncate_to_3_decimal_places(float(data['latitude']))
+        longitude = truncate_to_3_decimal_places(float(data['longitude']))
         device_id = data['deviceId']
 
         print(f"[Location Received] From: {sender_email}, Location: ({latitude}, {longitude}), Device ID: {device_id}")
 
-        # Store only the required fields
+        # Store only the requir   ed fields
         with open("location_temp.json", "w") as f:
             json.dump({
                 "sender_email": sender_email,
