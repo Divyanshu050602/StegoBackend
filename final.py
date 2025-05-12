@@ -264,7 +264,7 @@ def decrypt_handler():
         end_timestamp = decoded_data['end_timestamp']
         ttl = decoded_data['ttl']
 
-        current_time = int(time.time())
+        current_timestamp = int(timestamp)
         print(f"Current time is: {current_time}")
         if not (start_timestamp <= current_time <= end_timestamp):
             return jsonify({"error": "[ERROR] Session Expired: The current time is outside the allowed window."}), 403
