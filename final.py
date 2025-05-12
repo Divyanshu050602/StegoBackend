@@ -265,8 +265,8 @@ def decrypt_handler():
         ttl = decoded_data['ttl']
 
         current_timestamp = int(timestamp)
-        print(f"Current time is: {current_time}")
-        if not (start_timestamp <= current_time <= end_timestamp):
+        print(f"Current time is: {current_timestamp}")
+        if not (start_timestamp <= current_timestamp <= end_timestamp):
             return jsonify({"error": "[ERROR] Session Expired: The current time is outside the allowed window."}), 403
 
         # 8. Decrypt AES-GCM
