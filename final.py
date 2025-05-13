@@ -204,6 +204,9 @@ def decrypt_handler():
         longitude = truncate_to_3_decimal_places(float(request.form.get('longitude')))
         machine_id = request.form.get('machine_id')
         timestamp = request.form.get('timestamp')
+        
+        print(f"[DEBUG] Received -> Lat: {latitude}, Lon: {longitude}, Machine ID: {machine_id}, Timestamp: {timestamp}")
+        print(f"[DEBUG] Image URL: {image_url}, Comment URL: {comment_url}, Keyword(s): {keyword}")
 
         if not all([image_url, comment_url, keyword, latitude, longitude, machine_id, timestamp]):
             return jsonify({'error': 'Missing required fields'}), 400
@@ -253,36 +256,50 @@ def decrypt_handler():
         message_digest = hashlib.sha256(extracted_message.encode('utf-8')).hexdigest()
         print(f"[DEBUG] Message length (chars): {len(extracted_message)}")
         print(f"[DEBUG] Contains delimiter ###: {'###' in extracted_message}")
-
+        print(f"[DEBUG] SHA256 digest of message: {hashlib.sha256(extracted_message.encode()).hexdigest()}")
      
         try:
             decoded_data = json.loads(base64.b64decode(extracted_message).decode())
+            print("[DEBUG] Successfully decoded base64 and JSON")
         except Exception as e:
+            print(f"[ERROR] Error decoding base64/JSON: {e}")
             return jsonify({'error': f'Error decoding base64 message: {str(e)}'}), 400
 
         # 7. Extract encryption fields
-        iv = base64.b64decode(decoded_data['iv'])
-        tag = base64.b64decode(decoded_data['tag'])
-        encrypted_message = base64.b64decode(decoded_data['msg'])
-        start_timestamp = decoded_data['start_timestamp']
-        end_timestamp = decoded_data['end_timestamp']
-        ttl = decoded_data['ttl']
+        try:
+            iv = base64.b64decode(decoded_data['iv'])
+            tag = base64.b64decode(decoded_data['tag'])
+            encrypted_message = base64.b64decode(decoded_data['msg'])
+            start_timestamp = decoded_data['start_timestamp']
+            end_timestamp = decoded_data['end_timestamp']
+            ttl = decoded_data['ttl']
+            print(f"[DEBUG] IV length: {len(iv)} | Tag length: {len(tag)} | Encrypted msg length: {len(encrypted_message)}")
+        except Exception as e:
+            print(f"[ERROR] Failed to extract decryption fields: {e}")
+            return jsonify({'error': 'Missing or malformed encryption fields'}), 400
 
-        print(f"Allowed window: {start_timestamp} to {end_timestamp}")
         
+        print(f"[DEBUG] Allowed window: {start_timestamp} to {end_timestamp}")
         current_timestamp = int(timestamp)
-        print(f"Current time is: {current_timestamp}")
+        print(f"[DEBUG] Current time: {current_timestamp}")
         if not (start_timestamp <= current_timestamp <= end_timestamp):
-            return jsonify({"error": "[ERROR] Session Expired: The current time is outside the allowed window."}), 403
+            print("[ERROR] Timestamp outside allowed window.")
+            return jsonify({"error": "Session Expired: The current time is outside the allowed window."}), 403
 
         # 8. Decrypt AES-GCM
         if any(x is None for x in [key, iv, tag, encrypted_message]):
             return jsonify({'error': 'Invalid decryption data'}), 400
 
-        cipher = Cipher(algorithms.AES(key), modes.GCM(iv, tag), backend=default_backend())
-        decryptor = cipher.decryptor()
-        decrypted_message = decryptor.update(encrypted_message) + decryptor.finalize()
-
+        print("[STEP 8] Decrypting message using AES-GCM")
+        try:
+            cipher = Cipher(algorithms.AES(key), modes.GCM(iv, tag), backend=default_backend())
+            decryptor = cipher.decryptor()
+            decrypted_message = decryptor.update(encrypted_message) + decryptor.finalize()
+            print("[🔓 SUCCESS] Decryption completed.")
+        except Exception as e:
+            print(f"[❌ ERROR] Decryption failed: {e}")
+            return jsonify({'error': 'Decryption failed. Possibly incorrect key or corrupted data.'}), 400
+        
         # 9. Print decryption details
         print("[🔓 DECRYPTION SUCCESS]")
         print(f"Image URL        : {image_url}")
@@ -292,6 +309,10 @@ def decrypt_handler():
         print(f"Longitude        : {longitude}")
         print(f"Machine ID       : {machine_id}")
         print(f"Decrypted Message: {decrypted_message.decode()}")
+
+        print("[STEP 9] Final output and cleanup")
+        print(f"🧾 Decrypted Message: {decrypted_message.decode()}")
+        print(f"📌 Source: {image_url} | Keyword Used: {matched_keyword} | Location: ({latitude}, {longitude}) | Device: {machine_id}")
 
         # 10. Cleanup
         os.remove(image_path)
