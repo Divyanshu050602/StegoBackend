@@ -264,6 +264,8 @@ def decrypt_handler():
         end_timestamp = decoded_data['end_timestamp']
         ttl = decoded_data['ttl']
 
+        print(f"Allowed window: {start_timestamp} to {end_timestamp}")
+        
         current_timestamp = int(timestamp)
         print(f"Current time is: {current_timestamp}")
         if not (start_timestamp <= current_timestamp <= end_timestamp):
