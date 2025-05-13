@@ -12,7 +12,7 @@ from cryptography.hazmat.backends import default_backend
 from hashlib import sha256
 from werkzeug.utils import secure_filename
 import tempfile
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 from download_image import download_image
 from comment_scraper import fetch_comments
 from NLP_comment_and_keyword_analyser import find_best_match
@@ -33,6 +33,9 @@ os.makedirs(ENCRYPTED_FOLDER, exist_ok=True)
 
 def truncate_to_3_decimal_places(value):
     return float(str(value).split('.')[0] + '.' + str(value).split('.')[1][:3])
+
+# Define IST timezone
+IST = timezone(timedelta(hours=5, minutes=30))
 
 @app.route('/')
 def index():
@@ -137,8 +140,9 @@ def encrypt_handler():
         start_timestamp_str = request.form['startTimestamp']
         end_timestamp_str = request.form['endTimestamp']
 
-        start_dt = datetime.strptime(start_timestamp_str, "%Y-%m-%dT%H:%M")
-        end_dt = datetime.strptime(end_timestamp_str, "%Y-%m-%dT%H:%M")
+        # Parse input and localize to IST
+        start_dt = datetime.strptime(start_timestamp_str, "%Y-%m-%dT%H:%M").replace(tzinfo=IST)
+        end_dt = datetime.strptime(end_timestamp_str, "%Y-%m-%dT%H:%M").replace(tzinfo=IST)
         start_timestamp = int(start_dt.timestamp())
         end_timestamp = int(end_dt.timestamp())
 
